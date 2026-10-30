@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "356236633441",
+    "project_id": "wir-zwei-9e599",
+    "storage_bucket": "wir-zwei-9e599.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:356236633441:android:bd9b22902aadbf630c1120",
+        "android_client_info": {
+          "package_name": "ch.wirzwei.paar_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCf4_F7FdeiVx9XkSr4IlXhFauvi5DckJo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

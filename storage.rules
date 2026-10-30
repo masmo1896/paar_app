@@ -1,0 +1,52 @@
+rules_version = '2';
+
+// Speicher für Fotos (später auch Sprach- und Videonachrichten).
+// Nur die zwei Mitglieder eines Paares dürfen dessen Dateien sehen und hochladen.
+// Die Mitgliedschaft wird in Firestore nachgeschaut (braucht die einmalige IAM-Freigabe beim Deploy).
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isMember(coupleId) {
+      return request.auth != null &&
+        firestore.get(/databases/(default)/documents/couples/$(coupleId)).data.members.hasAny([request.auth.uid]);
+    }
+
+    function coupleOf(uid) {
+      return firestore.get(/databases/(default)/documents/users/$(uid)).data.get('coupleId', null);
+    }
+
+    // Profilbilder: nur man selbst lädt hoch; sehen dürfen man selbst und der Schatz.
+    match /users/{uid}/{fileName} {
+      allow read: if request.auth != null &&
+        (request.auth.uid == uid ||
+          (coupleOf(uid) != null && coupleOf(uid) == coupleOf(request.auth.uid)));
+      allow create: if request.auth != null && request.auth.uid == uid &&
+        request.resource.contentType.matches('image/.*') &&
+        request.resource.size < 5 * 1024 * 1024;
+    }
+
+    match /couples/{coupleId}/images/{fileName} {
+      allow read, delete: if isMember(coupleId);
+      // Nur Bilder, höchstens 15 MB, und nichts überschreiben.
+      allow create: if isMember(coupleId) &&
+        request.resource.contentType.matches('image/.*') &&
+        request.resource.size < 15 * 1024 * 1024;
+    }
+
+    match /couples/{coupleId}/audio/{fileName} {
+      allow read, delete: if isMember(coupleId);
+      // Nur Audio, höchstens 10 MB (reicht für mehrere Minuten).
+      allow create: if isMember(coupleId) &&
+        request.resource.contentType.matches('audio/.*') &&
+        request.resource.size < 10 * 1024 * 1024;
+    }
+
+    match /couples/{coupleId}/videos/{fileName} {
+      allow read, delete: if isMember(coupleId);
+      // Nur Videos, höchstens 50 MB (eine Minute in mittlerer Qualität sind ca. 5–10 MB).
+      allow create: if isMember(coupleId) &&
+        request.resource.contentType.matches('video/.*') &&
+        request.resource.size < 50 * 1024 * 1024;
+    }
+  }
+}

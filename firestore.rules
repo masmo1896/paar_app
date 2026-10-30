@@ -1,0 +1,107 @@
+rules_version = '2';
+
+// Sicherheitsregeln: Nur ihr zwei könnt eure Daten lesen und schreiben.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    function isMember(coupleId) {
+      return signedIn() &&
+        get(/databases/$(database)/documents/couples/$(coupleId)).data.members.hasAny([request.auth.uid]);
+    }
+
+    // Wie isMember, aber mit dem Zustand NACH dem aktuellen Schreibvorgang (für Batches).
+    function isMemberAfter(coupleId) {
+      return getAfter(/databases/$(database)/documents/couples/$(coupleId)).data.members.hasAny([request.auth.uid]);
+    }
+
+    // Eigenes Profil. coupleId darf nur auf ein Paar zeigen, in dem man wirklich Mitglied ist.
+    // Lesen dürfen man selbst und die Person im selben Paar (für Name und Profilbild).
+    match /users/{uid} {
+      allow read: if signedIn() && (
+        request.auth.uid == uid ||
+        (resource.data.get('coupleId', null) != null &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('coupleId', null)
+            == resource.data.coupleId)
+      );
+      allow create, update: if signedIn() && request.auth.uid == uid &&
+        (!('coupleId' in request.resource.data) || isMemberAfter(request.resource.data.coupleId));
+    }
+
+    match /couples/{coupleId} {
+      allow read: if isMember(coupleId);
+      // Neues Paar: nur man selbst als Mitglied.
+      allow create: if signedIn() && request.resource.data.members == [request.auth.uid];
+      // Beitreten: genau eine Person kommt dazu, sonst ändert sich nichts.
+      allow update: if signedIn() &&
+        resource.data.members.size() == 1 &&
+        request.resource.data.members == resource.data.members.concat([request.auth.uid]) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']);
+
+      // "schreibt…"-Anzeige: lesen beide, schreiben nur das eigene Dokument.
+      match /typing/{uid} {
+        allow read: if isMember(coupleId);
+        allow write: if isMember(coupleId) && request.auth.uid == uid;
+      }
+
+      match /messages/{messageId} {
+        allow read: if isMember(coupleId);
+        // Text (bis 5000 Zeichen), Foto, GIF (GIPHY oder Storage), Sprach- oder Videonachricht.
+        allow create: if isMember(coupleId) &&
+          request.resource.data.senderId == request.auth.uid &&
+          (
+            (request.resource.data.get('type', 'text') == 'text' &&
+              request.resource.data.text is string &&
+              request.resource.data.text.size() <= 5000) ||
+            (request.resource.data.type == 'image' &&
+              request.resource.data.imageUrl is string &&
+              request.resource.data.imageUrl.matches('https://firebasestorage[.]googleapis[.]com/.*')) ||
+            (request.resource.data.type == 'gif' &&
+              request.resource.data.gifUrl is string &&
+              request.resource.data.gifUrl.matches('https://((media[0-9]*|i)[.]giphy[.]com|firebasestorage[.]googleapis[.]com)/.*')) ||
+            (request.resource.data.type == 'audio' &&
+              request.resource.data.audioUrl is string &&
+              request.resource.data.audioUrl.matches('https://firebasestorage[.]googleapis[.]com/.*') &&
+              request.resource.data.durationMs is int) ||
+            (request.resource.data.type == 'video' &&
+              request.resource.data.videoUrl is string &&
+              request.resource.data.videoUrl.matches('https://firebasestorage[.]googleapis[.]com/.*') &&
+              request.resource.data.durationMs is int)
+          );
+        allow update: if isMember(coupleId) && (
+          // Lesebestätigung: nur die Empfängerin darf "gelesen" setzen, sonst ändert sich nichts.
+          (resource.data.senderId != request.auth.uid &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']) &&
+            request.resource.data.read == true) ||
+          // Bearbeiten: nur eigene Textnachrichten, nur Text und Zeitstempel ändern sich.
+          (resource.data.senderId == request.auth.uid &&
+            resource.data.get('type', 'text') == 'text' &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt']) &&
+            request.resource.data.text is string &&
+            request.resource.data.text.size() <= 5000) ||
+          // Löschen: nur eigene Nachrichten; der Inhalt wird entfernt, type wird 'deleted'.
+          (resource.data.senderId == request.auth.uid &&
+            request.resource.data.type == 'deleted' &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+              ['type', 'text', 'imageUrl', 'gifUrl', 'audioUrl', 'videoUrl',
+               'durationMs', 'reactions', 'replyTo', 'editedAt'])) ||
+          // Smiley-Reaktion: jede Person darf nur ihre eigene setzen oder entfernen.
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']) &&
+            request.resource.data.reactions
+              .diff(resource.data.get('reactions', {}))
+              .affectedKeys().hasOnly([request.auth.uid]) &&
+            (!(request.auth.uid in request.resource.data.reactions) ||
+              (request.resource.data.reactions[request.auth.uid] is string &&
+               request.resource.data.reactions[request.auth.uid].size() <= 16)))
+        );
+      }
+    }
+
+    // Einladungscodes: Wer den Code kennt, darf ihn nachschlagen (aber nicht auflisten).
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow create: if signedIn() && isMemberAfter(request.resource.data.coupleId);
+    }
+  }
+}

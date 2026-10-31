@@ -1,0 +1,216 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+import '../services/couple_service.dart';
+import '../services/push_service.dart';
+import '../theme.dart';
+import '../widgets/who.dart';
+import 'calendar_screen.dart';
+import 'chat_screen.dart';
+import 'home_screen.dart';
+import 'todo_screen.dart';
+import 'us_screen.dart';
+
+/// Hauptbildschirm mit der Navigationsleiste unten: Home, Chat, Kalender, To-dos, Wir.
+/// Countdowns erreichst du über die Home-Seite, die Alben über die Wir-Seite.
+/// Alle Bereiche bleiben im Hintergrund geöffnet, so verlierst du beim Wechseln
+/// weder deine Scrollposition noch einen angefangenen Text.
+class HomeShell extends StatefulWidget {
+  const HomeShell({super.key, required this.coupleId});
+
+  final String coupleId;
+
+  @override
+  State<HomeShell> createState() => _HomeShellState();
+}
+
+class _HomeShellState extends State<HomeShell> {
+  int _tab = 0;
+  final _myUid = FirebaseAuth.instance.currentUser!.uid;
+  StreamSubscription<RemoteMessage>? _foregroundSub;
+
+  static const _tabNames = ['Home', 'Chat', 'Kalender', 'To-dos', 'Wir'];
+
+  @override
+  void initState() {
+    super.initState();
+    final push = PushService.instance;
+    push.startIfEnabled();
+    push.requestedTab.addListener(_openRequestedTab);
+    // Benachrichtigung kommt, während die App offen ist: das System zeigt dann nichts.
+    // Darum ein kurzer Hinweis, wenn man nicht gerade im passenden Bereich ist.
+    _foregroundSub = FirebaseMessaging.onMessage.listen(_showInApp);
+    // Falls die App durch eine Benachrichtigung gestartet wurde, noch bevor wir lauschten.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openRequestedTab());
+  }
+
+  @override
+  void dispose() {
+    PushService.instance.requestedTab.removeListener(_openRequestedTab);
+    _foregroundSub?.cancel();
+    super.dispose();
+  }
+
+  void _openRequestedTab() {
+    final tab = PushService.instance.requestedTab.value;
+    if (tab == null) return;
+    PushService.instance.requestedTab.value = null;
+    if (mounted) setState(() => _tab = tab);
+  }
+
+  void _showInApp(RemoteMessage message) {
+    final tab = PushService.tabFor(message);
+    final note = message.notification;
+    if (!mounted || tab == null || tab == _tab || note == null) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            '${note.title ?? _tabNames[tab]}: ${note.body ?? ''}',
+            maxLines: 2,
+          ),
+          action: SnackBarAction(
+            label: 'Ansehen',
+            onPressed: () => setState(() => _tab = tab),
+          ),
+        ),
+      );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Name und uid der anderen Person brauchen To-dos und Kalender für "Du / Name / Beide".
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: CoupleService.instance.partnerStream(widget.coupleId),
+      builder: (context, snap) {
+        final partner = snap.data;
+        final couple = Couple(
+          coupleId: widget.coupleId,
+          myUid: _myUid,
+          partnerUid: partner?['uid'] as String?,
+          partnerName: partner?['name'] as String?,
+        );
+        return Scaffold(
+          body: IndexedStack(
+            index: _tab,
+            children: [
+              HomeScreen(couple: couple, onOpenTab: _open),
+              ChatScreen(coupleId: widget.coupleId, active: _tab == 1),
+              CalendarScreen(couple: couple),
+              TodoScreen(couple: couple),
+              UsScreen(couple: couple),
+            ],
+          ),
+          bottomNavigationBar: _KitsuneNav(selected: _tab, onSelect: _open),
+        );
+      },
+    );
+  }
+
+  void _open(int tab) => setState(() => _tab = tab);
+}
+
+/// Navigation wie im Mockup: feine Strich-Symbole (Torii für Home), aktive Seite in
+/// Creme mit rotem Punkt darunter, die anderen in gedämpftem Blau.
+class _KitsuneNav extends StatelessWidget {
+  const _KitsuneNav({required this.selected, required this.onSelect});
+
+  final int selected;
+  final ValueChanged<int> onSelect;
+
+  static const _items = [
+    (
+      'Home',
+      '<path d="M2 5c6 1.5 14 1.5 20 0M4 9h16M7 6v14M17 6v14" stroke-linecap="round"/>',
+    ),
+    ('Chat', '<path d="M4 5h16v11H9l-5 4z" stroke-linejoin="round"/>'),
+    (
+      'Kalender',
+      '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4" stroke-linecap="round"/>',
+    ),
+    (
+      'To-dos',
+      '<path d="M9 6h11M9 12h11M9 18h11M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5 2.5-2.5M4 18h2" stroke-linecap="round" stroke-linejoin="round"/>',
+    ),
+    (
+      'Wir',
+      '<path d="M12 20s-7-4.6-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.4-7 10-7 10z" stroke-linejoin="round"/>',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Kitsune.deep,
+        border: Border(top: BorderSide(color: Color(0x40F3EBD3))),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        6,
+        6,
+        6,
+        6 + MediaQuery.paddingOf(context).bottom,
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < _items.length; i++)
+            Expanded(
+              child: Semantics(
+                selected: i == selected,
+                button: true,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => onSelect(i),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(height: 4),
+                        SvgPicture.string(
+                          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
+                          'fill="none" stroke="#000" stroke-width="1.8">'
+                          '${_items[i].$2}</svg>',
+                          width: 22,
+                          height: 22,
+                          colorFilter: ColorFilter.mode(
+                            i == selected ? Kitsune.paper : Kitsune.dim,
+                            BlendMode.srcIn,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          _items[i].$1,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            letterSpacing: 0.6,
+                            color: i == selected ? Kitsune.paper : Kitsune.dim,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Container(
+                          width: 5,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: i == selected
+                                ? Kitsune.lantern
+                                : Colors.transparent,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

@@ -29,6 +29,12 @@ service cloud.firestore {
         (!('coupleId' in request.resource.data) || isMemberAfter(request.resource.data.coupleId));
     }
 
+    // Push-Adressen der eigenen Geräte: nur man selbst darf sie lesen und schreiben.
+    // (Die Cloud-Funktion liest sie mit Admin-Rechten, die ignorieren diese Regeln.)
+    match /users/{uid}/tokens/{token} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
     match /couples/{coupleId} {
       allow read: if isMember(coupleId);
       // Neues Paar: nur man selbst als Mitglied.
@@ -38,6 +44,79 @@ service cloud.firestore {
         resource.data.members.size() == 1 &&
         request.resource.data.members == resource.data.members.concat([request.auth.uid]) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']);
+
+      // To-dos: beide dürfen alles (anlegen, abhaken, bearbeiten, löschen), aber nur gültige Daten.
+      match /todos/{todoId} {
+        function validTodo(d) {
+          return d.title is string && d.title.size() > 0 && d.title.size() <= 200 &&
+            d.assignee is string && d.assignee.size() <= 40 &&
+            d.done is bool &&
+            (d.get('due', null) == null ||
+              (d.due is string && d.due.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')));
+        }
+        allow read, delete: if isMember(coupleId);
+        allow create: if isMember(coupleId) && validTodo(request.resource.data) &&
+          request.resource.data.createdBy == request.auth.uid;
+        allow update: if isMember(coupleId) && validTodo(request.resource.data) &&
+          request.resource.data.createdBy == resource.data.createdBy;
+      }
+
+      // Countdowns: gleiche Regeln; Datum "2026-11-06", Emoji kurz.
+      match /countdowns/{countdownId} {
+        function validCountdown(d) {
+          return d.title is string && d.title.size() > 0 && d.title.size() <= 100 &&
+            d.date is string && d.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+            d.emoji is string && d.emoji.size() <= 16 &&
+            d.yearly is bool;
+        }
+        allow read, delete: if isMember(coupleId);
+        allow create: if isMember(coupleId) && validCountdown(request.resource.data) &&
+          request.resource.data.createdBy == request.auth.uid;
+        allow update: if isMember(coupleId) && validCountdown(request.resource.data) &&
+          request.resource.data.createdBy == resource.data.createdBy;
+      }
+
+      // Fotoalben: beide dürfen Alben anlegen, umbenennen, löschen und Fotos hinzufügen.
+      // Am Album selbst ändern sich nur Name, Titelbild und Fotozähler.
+      match /albums/{albumId} {
+        function validName(d) {
+          return d.name is string && d.name.size() > 0 && d.name.size() <= 60;
+        }
+        allow read, delete: if isMember(coupleId);
+        allow create: if isMember(coupleId) && validName(request.resource.data) &&
+          request.resource.data.createdBy == request.auth.uid;
+        allow update: if isMember(coupleId) && validName(request.resource.data) &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name', 'coverUrl', 'photoCount']);
+
+        match /photos/{photoId} {
+          allow read, delete: if isMember(coupleId);
+          allow create: if isMember(coupleId) &&
+            request.resource.data.addedBy == request.auth.uid &&
+            request.resource.data.url is string &&
+            request.resource.data.url.matches('https://firebasestorage[.]googleapis[.]com/.*') &&
+            request.resource.data.path is string;
+        }
+      }
+
+      // Termine: gleiche Regeln; Datum "2026-11-06", Zeit "07:40", Ende nicht vor Anfang.
+      match /events/{eventId} {
+        function validEvent(d) {
+          return d.title is string && d.title.size() > 0 && d.title.size() <= 200 &&
+            d.who is string && d.who.size() <= 40 &&
+            d.startDate is string && d.startDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+            d.endDate is string && d.endDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+            d.endDate >= d.startDate &&
+            (d.get('startTime', null) == null || d.startTime.matches('^[0-9]{2}:[0-9]{2}$')) &&
+            (d.get('endTime', null) == null || d.endTime.matches('^[0-9]{2}:[0-9]{2}$')) &&
+            d.get('note', '').size() <= 500;
+        }
+        allow read, delete: if isMember(coupleId);
+        allow create: if isMember(coupleId) && validEvent(request.resource.data) &&
+          request.resource.data.createdBy == request.auth.uid;
+        allow update: if isMember(coupleId) && validEvent(request.resource.data) &&
+          request.resource.data.createdBy == resource.data.createdBy;
+      }
 
       // "schreibt…"-Anzeige: lesen beide, schreiben nur das eigene Dokument.
       match /typing/{uid} {

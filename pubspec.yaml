@@ -46,6 +46,12 @@ dependencies:
   video_player: ^2.14.1
   http: ^1.6.0
   scrollable_positioned_list: ^0.3.8
+  flutter_localizations:
+    sdk: flutter
+  intl: any
+  google_fonts: ^6.3.3
+  firebase_messaging: ^17.0.1
+  flutter_svg: ^2.3.2
 
 dev_dependencies:
   flutter_test:
@@ -68,6 +74,10 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Bilder für das Kitsune-Design (Laternen, Fuchs, Ahornblätter, Koi)
+  assets:
+    - assets/kitsune/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

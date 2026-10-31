@@ -2,7 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'screens/auth_screen.dart';
-import 'screens/chat_screen.dart';
+import 'screens/home_shell.dart';
 import 'screens/pairing_screen.dart';
 import 'services/couple_service.dart';
 
@@ -31,7 +31,7 @@ class AppGate extends StatelessWidget {
             }
             final coupleId = coupleSnap.data;
             if (coupleId == null) return const PairingScreen();
-            return ChatScreen(coupleId: coupleId);
+            return HomeShell(coupleId: coupleId);
           },
         );
       },

@@ -6,16 +6,21 @@ import 'package:image_picker/image_picker.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../services/couple_service.dart';
+import '../theme.dart';
 import '../widgets/gif_picker.dart';
+import '../widgets/fox_bubble.dart';
 import '../widgets/partner_header.dart';
 import '../widgets/selfie_video.dart';
 import '../widgets/voice.dart';
 
 // Der Chat: Nachrichten kommen in Echtzeit über einen Firestore-Stream.
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key, required this.coupleId});
+  const ChatScreen({super.key, required this.coupleId, this.active = true});
 
   final String coupleId;
+
+  /// false, solange ein anderer Tab offen ist: dann werden Nachrichten nicht als gelesen markiert.
+  final bool active;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -62,6 +67,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _stopTyping();
     _input.dispose();
     super.dispose();
+  }
+
+  // Wird der Chat-Tab wieder geöffnet, neu zeichnen -> ungelesene werden markiert.
+  @override
+  void didUpdateWidget(ChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.active && widget.active) setState(() {});
   }
 
   // Kommt die App aus dem Hintergrund zurück, neu zeichnen -> ungelesene werden markiert.
@@ -165,7 +177,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void _markPartnerMessagesRead(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
   ) {
-    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+    if (!widget.active ||
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
       return;
     }
     final unread = docs
@@ -462,11 +475,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     return Scaffold(
       // Kopfzeile: Profilbild + Name deines Schatzes, rechts das ⋮-Menü.
-      appBar: AppBar(
-        centerTitle: false,
-        titleSpacing: 12,
+      // Kopfzeile mit Laternen: Profilbild + Name deines Schatzes, rechts das ⋮-Menü.
+      // Grosse Kopfzeile: Fuchs am roten Tor unter dem Mond, Name unten im Bild.
+      appBar: kitsuneAppBar(
+        art: KitsuneArt.fox,
+        artAlignment: const Alignment(0, 0.1),
+        kana: '',
         title: PartnerTitle(coupleId: widget.coupleId),
+        titleAtBottom: true,
         actions: const [ChatMenu()],
+        height: 176,
       ),
       body: Column(
         children: [
@@ -758,12 +776,9 @@ class _Bubble extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     // Videobotschaften stehen frei als Kreis, ohne farbige Blase dahinter.
     final isVideo = videoUrl != null;
-    final bg = isVideo
-        ? Colors.transparent
-        : isMine
-        ? scheme.primary
-        : scheme.surfaceContainerHighest;
-    final fg = isMine && !isVideo ? scheme.onPrimary : scheme.onSurface;
+    // Fuchsohren-Blasen: eigene in Aqua (mit Schwanzspitze), die der anderen in Creme.
+    final bg = isMine ? Kitsune.aqua : Kitsune.paper;
+    final fg = isVideo ? scheme.onSurface : Kitsune.night;
     final t = time;
     final timeText = t == null
         ? ''
@@ -774,21 +789,12 @@ class _Bubble extends StatelessWidget {
       constraints: BoxConstraints(
         maxWidth: MediaQuery.sizeOf(context).width * 0.75,
       ),
-      margin: const EdgeInsets.symmetric(vertical: 3),
+      margin: isVideo ? const EdgeInsets.symmetric(vertical: 4) : null,
       padding: isVideo
           ? const EdgeInsets.only(bottom: 4)
           : imageUrl != null
           ? const EdgeInsets.fromLTRB(4, 4, 10, 6)
           : const EdgeInsets.fromLTRB(14, 10, 14, 6),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(18),
-          topRight: const Radius.circular(18),
-          bottomLeft: Radius.circular(isMine ? 18 : 4),
-          bottomRight: Radius.circular(isMine ? 4 : 18),
-        ),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -902,7 +908,19 @@ class _Bubble extends StatelessWidget {
                 final box = bubbleContext.findRenderObject()! as RenderBox;
                 onLongPress(box.localToGlobal(Offset.zero) & box.size);
               },
-              child: bubble,
+              // Blasen sind hell: Inhalte darin (z. B. Sprachnachricht) werden dunkel.
+              child: isVideo
+                  ? bubble
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Paper(
+                        child: FoxBubble(
+                          color: bg,
+                          isMine: isMine,
+                          child: bubble,
+                        ),
+                      ),
+                    ),
             ),
           ),
           // Smiley-Reaktionen als kleine Plakette, leicht über den Blasenrand gezogen.
@@ -1365,6 +1383,11 @@ class _InputBar extends StatelessWidget {
                 if (hasText)
                   IconButton.filled(
                     onPressed: onSend,
+                    style: IconButton.styleFrom(
+                      backgroundColor: scheme.tertiary,
+                      foregroundColor: scheme.onTertiary,
+                      minimumSize: const Size(48, 48),
+                    ),
                     icon: const Icon(Icons.send_rounded),
                   )
                 else ...[

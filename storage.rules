@@ -33,6 +33,14 @@ service firebase.storage {
         request.resource.size < 15 * 1024 * 1024;
     }
 
+    // Fotoalben: nur Bilder, höchstens 15 MB; beide dürfen ansehen und löschen.
+    match /couples/{coupleId}/albums/{albumId}/{fileName} {
+      allow read, delete: if isMember(coupleId);
+      allow create: if isMember(coupleId) &&
+        request.resource.contentType.matches('image/.*') &&
+        request.resource.size < 15 * 1024 * 1024;
+    }
+
     match /couples/{coupleId}/audio/{fileName} {
       allow read, delete: if isMember(coupleId);
       // Nur Audio, höchstens 10 MB (reicht für mehrere Minuten).

@@ -136,11 +136,11 @@ class _VoiceRecordButtonState extends State<VoiceRecordButton> {
           height: _recording ? 56 : 48,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: _recording ? scheme.error : scheme.primary,
+            color: _recording ? scheme.error : scheme.tertiary,
           ),
           child: Icon(
             Icons.mic_rounded,
-            color: _recording ? scheme.onError : scheme.onPrimary,
+            color: _recording ? scheme.onError : scheme.onTertiary,
           ),
         ),
       ),

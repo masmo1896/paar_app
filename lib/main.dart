@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app_gate.dart';
 import 'firebase_options.dart';
@@ -24,6 +25,16 @@ class PaarApp extends StatelessWidget {
       darkTheme: AppTheme.dark,
       // Folgt automatisch der Systemeinstellung (Hell/Dunkel).
       themeMode: ThemeMode.system,
+      // Deutsch für Datums- und Zeitauswahl (Wochenstart Montag).
+      locale: const Locale('de'),
+      supportedLocales: const [Locale('de')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      // Pfirsich-Verlauf hinter allen Bildschirmen.
+      builder: (context, child) => AppBackground(child: child),
       home: const AppGate(),
     );
   }

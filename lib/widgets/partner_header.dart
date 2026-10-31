@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/couple_service.dart';
+import '../services/push_service.dart';
 
 /// Rundes Profilbild; ohne Bild wird der erste Buchstabe des Namens gezeigt.
 class Avatar extends StatelessWidget {
@@ -76,8 +77,12 @@ class PartnerTitle extends StatelessWidget {
                       Text(
                         displayName,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleLarge
-                            ?.copyWith(fontWeight: FontWeight.w600),
+                        // Schatten, damit der Name auf der Illustration lesbar bleibt.
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          shadows: const [
+                            Shadow(color: Color(0xFF0A1838), blurRadius: 10),
+                          ],
+                        ),
                       ),
                       if (partner['uid'] case final String uid)
                         _TypingIndicator(coupleId: coupleId, partnerUid: uid),
@@ -189,7 +194,7 @@ class ChatMenu extends StatelessWidget {
       onSelected: (value) => switch (value) {
         'photo' => _changePhoto(context),
         'name' => _changeName(context),
-        'logout' => FirebaseAuth.instance.signOut(),
+        'logout' => _logout(),
         _ => null,
       },
       itemBuilder: (_) => const [
@@ -213,6 +218,12 @@ class ChatMenu extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  // Erst dieses Gerät bei den Push-Nachrichten abmelden, dann ausloggen.
+  Future<void> _logout() async {
+    await PushService.instance.stop();
+    await FirebaseAuth.instance.signOut();
   }
 
   Future<void> _changePhoto(BuildContext context) async {

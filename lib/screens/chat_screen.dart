@@ -497,10 +497,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return Scaffold(
       // Kopfzeile: Profilbild + Name deines Schatzes, rechts das ⋮-Menü.
       // Kopfzeile mit Laternen: Profilbild + Name deines Schatzes, rechts das ⋮-Menü.
-      // Grosse Kopfzeile: Fuchs am roten Tor unter dem Mond, Name unten im Bild.
+      // Kopfzeile: Fuchs am roten Tor unter dem Mond, Name unten im Bild.
+      // Bewusst niedrig gehalten, damit die Nachrichten genug Platz haben.
       appBar: kitsuneAppBar(
         art: KitsuneArt.fox,
-        artAlignment: const Alignment(0, 0.1),
+        // Ausschnitt: unterer Teil des Mondes, Fuchs und Tor.
+        artAlignment: const Alignment(0, 0.42),
         kana: '',
         title: PartnerTitle(coupleId: widget.coupleId),
         titleAtBottom: true,
@@ -512,7 +514,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ),
           const ChatMenu(),
         ],
-        height: 176,
+        height: 104,
       ),
       body: Column(
         children: [

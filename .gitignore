@@ -31,6 +31,9 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+# build ist ein Verweis nach ~/Developer/wir-zwei-build (ausserhalb von iCloud,
+# sonst scheitert das Signieren der iPhone-App an Finder-Zusatzinfos)
+/build
 /coverage/
 
 # Symbolication related

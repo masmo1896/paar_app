@@ -12,8 +12,13 @@ const db = getFirestore();
 // Die Firestore-Datenbank steht in Zürich, die Funktionen müssen in derselben Region laufen.
 const REGION = 'europe-west6';
 
-/** Name der Person (für "Anna: Hallo"). */
-async function nameOf(uid) {
+/** Name der Person (für "Anna: Hallo"). Hat [viewer] einen Spitznamen gesetzt, diesen. */
+async function nameOf(uid, viewer) {
+  if (viewer) {
+    const me = await db.collection('users').doc(viewer).get();
+    const nick = (me.get('partnerNickname') || '').trim();
+    if (nick) return nick;
+  }
   const snap = await db.collection('users').doc(uid).get();
   return snap.get('name') || 'Dein Schatz';
 }
@@ -68,7 +73,7 @@ exports.onMessage = onDocumentCreated(
     const m = event.data.data();
     const to = await partnerOf(event.params.coupleId, m.senderId);
     if (!to) return;
-    await notify(to, { title: await nameOf(m.senderId), body: preview(m), type: 'chat' });
+    await notify(to, { title: await nameOf(m.senderId, to), body: preview(m), type: 'chat' });
   },
 );
 
@@ -85,7 +90,7 @@ exports.onReaction = onDocumentUpdated(
       // Nur neue oder geänderte Reaktionen der anderen Person, nicht auf eigene Nachricht
       if (was[uid] === emoji || uid === after.senderId) continue;
       await notify(after.senderId, {
-        title: await nameOf(uid),
+        title: await nameOf(uid, after.senderId),
         body: `${emoji} auf: ${preview(after)}`,
         type: 'chat',
       });
@@ -101,7 +106,7 @@ exports.onTodo = onDocumentCreated(
     const to = await partnerOf(event.params.coupleId, t.createdBy);
     if (!to || (t.assignee !== to && t.assignee !== 'both')) return;
     await notify(to, {
-      title: `${await nameOf(t.createdBy)} hat eine Aufgabe für dich`,
+      title: `${await nameOf(t.createdBy, to)} hat eine Aufgabe für dich`,
       body: shorten(t.title),
       type: 'todo',
     });
@@ -117,7 +122,7 @@ exports.onEvent = onDocumentCreated(
     if (!to) return;
     const [, m, d] = e.startDate.split('-');
     await notify(to, {
-      title: `${await nameOf(e.createdBy)} hat einen Termin eingetragen`,
+      title: `${await nameOf(e.createdBy, to)} hat einen Termin eingetragen`,
       body: `${shorten(e.title)} · ${Number(d)}.${Number(m)}.`,
       type: 'event',
     });

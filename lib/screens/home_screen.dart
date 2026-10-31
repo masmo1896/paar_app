@@ -226,14 +226,6 @@ class _NextCountdown extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'BIS ZUM NÄCHSTEN DATE',
-                                    style: AppTheme.label(
-                                      color: Kitsune.plum,
-                                      size: 10.5,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
                                     c.title,
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
@@ -721,31 +713,38 @@ class _ThinkingOfYouState extends State<_ThinkingOfYou>
       TweenSequenceItem(tween: Tween(begin: 1.25, end: 1), weight: 1),
     ]).animate(_beat);
 
-    return OutlinedButton(
-      onPressed: _send,
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size.fromHeight(52),
-        side: const BorderSide(color: Kitsune.lantern, width: 1.5),
-        foregroundColor: Kitsune.paper,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ScaleTransition(
-            scale: scale,
-            child: const Icon(
-              Icons.favorite_rounded,
-              color: Kitsune.lantern,
-              size: 20,
+    // Nur ein Herz: rote Laterne mit cremefarbenem Rand, schlägt beim Antippen.
+    return Center(
+      child: Tooltip(
+        message: 'Ich denk an dich',
+        child: Semantics(
+          button: true,
+          label: 'Ich denk an dich senden',
+          child: Material(
+            color: Kitsune.lantern,
+            shape: const CircleBorder(
+              side: BorderSide(color: Kitsune.paper, width: 2),
+            ),
+            elevation: 6,
+            shadowColor: Colors.black54,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: _send,
+              child: SizedBox(
+                width: 68,
+                height: 68,
+                child: ScaleTransition(
+                  scale: scale,
+                  child: const Icon(
+                    Icons.favorite_rounded,
+                    color: Kitsune.paper,
+                    size: 32,
+                  ),
+                ),
+              ),
             ),
           ),
-          const SizedBox(width: 10),
-          Text(
-            'Ich denk an dich',
-            style: AppTheme.serif(size: 16, color: Kitsune.paper),
-          ),
-        ],
+        ),
       ),
     );
   }

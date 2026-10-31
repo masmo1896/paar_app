@@ -272,13 +272,13 @@ class _MonthGrid extends StatelessWidget {
   }
 
   Widget _cell(BuildContext context, int dayNumber, int daysInMonth) {
-    if (dayNumber < 1 || dayNumber > daysInMonth) {
-      return const SizedBox(height: 46);
-    }
+    // Tage aus dem Vor- und Folgemonat gedämpft anzeigen, damit Balken
+    // (z. B. Ferien über Neujahr) über den Monatswechsel durchlaufen.
+    final outside = dayNumber < 1 || dayNumber > daysInMonth;
     final scheme = Theme.of(context).colorScheme;
     final day = DateTime(month.year, month.month, dayNumber);
-    final isSelected = sameDay(day, selected);
-    final isToday = sameDay(day, today());
+    final isSelected = !outside && sameDay(day, selected);
+    final isToday = !outside && sameDay(day, today());
     // Höchstens drei verschiedene Farbpunkte pro Tag.
     final owners = {for (final e in events.where((e) => e.occursOn(day))) e.who}
         .take(3)
@@ -300,7 +300,7 @@ class _MonthGrid extends StatelessWidget {
                   context,
                   couple,
                   trip.who,
-                ).bg.withValues(alpha: 0.22),
+                ).bg.withValues(alpha: outside ? 0.18 : 0.38),
                 borderRadius: BorderRadius.horizontal(
                   left: Radius.circular(
                     sameDay(day, trip.start) || day.weekday == 1 ? 17 : 0,
@@ -352,14 +352,15 @@ class _MonthGrid extends StatelessWidget {
                             : null,
                       ),
                       child: Text(
-                        '$dayNumber',
+                        '${day.day}',
                         style: AppTheme.serif(
                           size: 15,
                           color: isSelected
                               ? Kitsune.paper
-                              : day.weekday >= 6
-                              ? Kitsune.aqua
-                              : scheme.onSurface,
+                              : (day.weekday >= 6
+                                        ? Kitsune.aqua
+                                        : scheme.onSurface)
+                                    .withValues(alpha: outside ? 0.35 : 1),
                         ),
                       ),
                     ),

@@ -161,3 +161,59 @@ Future<bool> confirmDelete(BuildContext context, String what) async {
   );
   return ok ?? false;
 }
+
+/// Kleiner Dialog mit einem Textfeld. Gibt den Text zurück, null = abgebrochen.
+/// Das Textfeld gehört dem Dialog selbst und wird erst aufgeräumt, wenn er ganz zu ist.
+Future<String?> askText(
+  BuildContext context, {
+  required String title,
+  String initial = '',
+  String? hint,
+}) => showDialog<String>(
+  context: context,
+  builder: (_) => _TextDialog(title: title, initial: initial, hint: hint),
+);
+
+class _TextDialog extends StatefulWidget {
+  const _TextDialog({required this.title, required this.initial, this.hint});
+
+  final String title;
+  final String initial;
+  final String? hint;
+
+  @override
+  State<_TextDialog> createState() => _TextDialogState();
+}
+
+class _TextDialogState extends State<_TextDialog> {
+  late final _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      textCapitalization: TextCapitalization.words,
+      decoration: InputDecoration(hintText: widget.hint),
+      onSubmitted: (v) => Navigator.pop(context, v),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Abbrechen'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, _controller.text),
+        style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
+        child: const Text('Speichern'),
+      ),
+    ],
+  );
+}

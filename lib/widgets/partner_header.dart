@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../services/couple_service.dart';
 import '../services/push_service.dart';
+import 'who.dart';
 
 /// Rundes Profilbild; ohne Bild wird der erste Buchstabe des Namens gezeigt.
 class Avatar extends StatelessWidget {
@@ -246,36 +247,12 @@ class ChatMenu extends StatelessWidget {
   Future<void> _changeName(BuildContext context) async {
     final current = await CoupleService.instance.myProfileStream().first;
     if (!context.mounted) return;
-    final controller = TextEditingController(
-      text: current?['name'] as String? ?? '',
+    final name = await askText(
+      context,
+      title: 'Dein Name',
+      initial: current?['name'] as String? ?? '',
+      hint: 'So sieht dich dein Schatz',
     );
-    final name = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Dein Name'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            hintText: 'So sieht dich dein Schatz',
-          ),
-          onSubmitted: (v) => Navigator.pop(dialogContext, v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Abbrechen'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
-            child: const Text('Speichern'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
     if (name != null && name.trim().isNotEmpty) {
       await CoupleService.instance.setMyName(name.trim());
     }

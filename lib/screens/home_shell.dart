@@ -30,6 +30,7 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _tab = 0;
+  int _previousTab = 0; // Home
   final _myUid = FirebaseAuth.instance.currentUser!.uid;
   StreamSubscription<RemoteMessage>? _foregroundSub;
   final _myProfile = CoupleService.instance.myProfileStream();
@@ -60,7 +61,7 @@ class _HomeShellState extends State<HomeShell> {
     final tab = PushService.instance.requestedTab.value;
     if (tab == null) return;
     PushService.instance.requestedTab.value = null;
-    if (mounted) setState(() => _tab = tab);
+    if (mounted) _open(tab);
   }
 
   void _showInApp(RemoteMessage message) {
@@ -75,10 +76,7 @@ class _HomeShellState extends State<HomeShell> {
             '${note.title ?? _tabNames[tab]}: ${note.body ?? ''}',
             maxLines: 2,
           ),
-          action: SnackBarAction(
-            label: 'Ansehen',
-            onPressed: () => setState(() => _tab = tab),
-          ),
+          action: SnackBarAction(label: 'Ansehen', onPressed: () => _open(tab)),
         ),
       );
   }
@@ -112,7 +110,11 @@ class _HomeShellState extends State<HomeShell> {
         index: _tab,
         children: [
           HomeScreen(couple: couple, onOpenTab: _open),
-          ChatScreen(coupleId: widget.coupleId, active: _tab == 1),
+          ChatScreen(
+            coupleId: widget.coupleId,
+            active: _tab == 1,
+            onBack: () => _open(_previousTab),
+          ),
           CalendarScreen(couple: couple),
           TodoScreen(couple: couple),
           UsScreen(couple: couple),
@@ -122,7 +124,15 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  void _open(int tab) => setState(() => _tab = tab);
+  // Merkt sich den vorherigen Bereich für den Zurück-Knopf im Chat.
+  void _open(int tab) {
+    if (tab == _tab) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      if (_tab != 1) _previousTab = _tab;
+      _tab = tab;
+    });
+  }
 }
 
 /// Navigation wie im Mockup: feine Strich-Symbole (Torii für Home), aktive Seite in

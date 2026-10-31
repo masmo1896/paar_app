@@ -85,10 +85,15 @@ class _Names extends StatelessWidget {
           final since = yearly.isEmpty ? null : yearly.first.date;
           return Column(
             children: [
-              Text(
-                '${myName == null || myName.isEmpty ? 'Du' : myName} & ${couple.partnerLabel}',
-                textAlign: TextAlign.center,
-                style: AppTheme.serif(size: 24).copyWith(letterSpacing: 1),
+              // Antippen: Spitznamen für deinen Schatz festlegen.
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => _editNickname(context, couple.partnerLabel),
+                child: Text(
+                  '${myName == null || myName.isEmpty ? 'Du' : myName} & ${couple.partnerLabel}',
+                  textAlign: TextAlign.center,
+                  style: AppTheme.serif(size: 24).copyWith(letterSpacing: 1),
+                ),
               ),
               const SizedBox(height: 4),
               GestureDetector(
@@ -124,6 +129,16 @@ class _Names extends StatelessWidget {
       ),
     );
   }
+}
+
+Future<void> _editNickname(BuildContext context, String current) async {
+  final name = await askText(
+    context,
+    title: 'Wie heisst dein Schatz?',
+    initial: current,
+    hint: 'Leer lassen = ihr eigener Name',
+  );
+  if (name != null) await CoupleService.instance.setPartnerNickname(name);
 }
 
 /// Die drei neuesten Alben als schräge Polaroids.

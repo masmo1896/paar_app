@@ -400,7 +400,22 @@ AppBar kitsuneAppBar({
   bool titleAtBottom = false,
 }) => AppBar(
   toolbarHeight: height,
-  leading: leading,
+  // Bei der Chat-Kopfzeile: Zurück-Knopf oben links mit dunklem runden Hintergrund.
+  leading: titleAtBottom && leading != null
+      ? Align(
+          alignment: Alignment.topCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Kitsune.deep.withValues(alpha: 0.75),
+              ),
+              child: leading,
+            ),
+          ),
+        )
+      : leading,
   actions: titleAtBottom && actions != null
       ? [
           // Dunkler runder Hintergrund, damit die Knöpfe auch vor dem Mond sichtbar sind.

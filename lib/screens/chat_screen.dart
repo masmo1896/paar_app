@@ -16,9 +16,17 @@ import '../widgets/voice.dart';
 
 // Der Chat: Nachrichten kommen in Echtzeit über einen Firestore-Stream.
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key, required this.coupleId, this.active = true});
+  const ChatScreen({
+    super.key,
+    required this.coupleId,
+    this.active = true,
+    this.onBack,
+  });
 
   final String coupleId;
+
+  /// Zurück-Knopf oben links: wechselt zum zuvor geöffneten Bereich.
+  final VoidCallback? onBack;
 
   /// false, solange ein anderer Tab offen ist: dann werden Nachrichten nicht als gelesen markiert.
   final bool active;
@@ -502,7 +510,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       appBar: kitsuneAppBar(
         art: KitsuneArt.fox,
         // Ausschnitt: unterer Teil des Mondes, Fuchs und Tor.
-        artAlignment: const Alignment(0, 0.42),
+        artAlignment: const Alignment(0, 0.5),
         kana: '',
         title: PartnerTitle(coupleId: widget.coupleId),
         titleAtBottom: true,
@@ -514,96 +522,110 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ),
           const ChatMenu(),
         ],
-        height: 104,
+        height: 80,
+        leading: widget.onBack == null
+            ? null
+            : IconButton(
+                tooltip: 'Zurück',
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: widget.onBack,
+              ),
       ),
       body: Column(
         children: [
           _InviteBanner(coupleId: widget.coupleId),
           Expanded(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: messages,
-              builder: (context, snap) {
-                if (!snap.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final docs = snap.data!.docs;
-                if (docs.isEmpty) {
-                  return const Center(
-                    child: Text('Schreibt eure erste Nachricht 💬'),
-                  );
-                }
-                _markPartnerMessagesRead(docs);
-                _countNewMessages(docs);
-                _docs = docs;
-                return Stack(
-                  children: [
-                    // reverse: true -> neueste Nachricht unten, Liste startet unten.
-                    ScrollablePositionedList.builder(
-                      reverse: true,
-                      itemScrollController: _itemScroll,
-                      itemPositionsListener: _itemPositions,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      itemCount: docs.length,
-                      itemBuilder: (context, i) {
-                        final doc = docs[i];
-                        final data = doc.data();
-                        final time = (data['createdAt'] as Timestamp?)
-                            ?.toDate();
-                        // Datumstrenner über der ersten Nachricht eines Tages
-                        // (die nächstältere Nachricht ist docs[i + 1]).
-                        final older = i + 1 < docs.length
-                            ? (docs[i + 1].data()['createdAt'] as Timestamp?)
-                                  ?.toDate()
-                            : null;
-                        final showDate =
-                            time != null &&
-                            (older == null || !_sameDay(time, older));
-                        return Column(
-                          children: [
-                            if (showDate) _DateChip(date: time),
-                            _SwipeToReply(
-                              enabled: data['type'] != 'deleted',
-                              onReply: () => _startReply(doc),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
-                                decoration: BoxDecoration(
-                                  color: doc.id == _highlightId
-                                      ? Theme.of(context).colorScheme.secondary
-                                            .withValues(alpha: 0.25)
-                                      : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(16),
+            // Antippen des Verlaufs schliesst die Tastatur.
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => FocusScope.of(context).unfocus(),
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: messages,
+                builder: (context, snap) {
+                  if (!snap.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final docs = snap.data!.docs;
+                  if (docs.isEmpty) {
+                    return const Center(
+                      child: Text('Schreibt eure erste Nachricht 💬'),
+                    );
+                  }
+                  _markPartnerMessagesRead(docs);
+                  _countNewMessages(docs);
+                  _docs = docs;
+                  return Stack(
+                    children: [
+                      // reverse: true -> neueste Nachricht unten, Liste startet unten.
+                      ScrollablePositionedList.builder(
+                        reverse: true,
+                        itemScrollController: _itemScroll,
+                        itemPositionsListener: _itemPositions,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        itemCount: docs.length,
+                        itemBuilder: (context, i) {
+                          final doc = docs[i];
+                          final data = doc.data();
+                          final time = (data['createdAt'] as Timestamp?)
+                              ?.toDate();
+                          // Datumstrenner über der ersten Nachricht eines Tages
+                          // (die nächstältere Nachricht ist docs[i + 1]).
+                          final older = i + 1 < docs.length
+                              ? (docs[i + 1].data()['createdAt'] as Timestamp?)
+                                    ?.toDate()
+                              : null;
+                          final showDate =
+                              time != null &&
+                              (older == null || !_sameDay(time, older));
+                          return Column(
+                            children: [
+                              if (showDate) _DateChip(date: time),
+                              _SwipeToReply(
+                                enabled: data['type'] != 'deleted',
+                                onReply: () => _startReply(doc),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  decoration: BoxDecoration(
+                                    color: doc.id == _highlightId
+                                        ? Theme.of(context)
+                                              .colorScheme
+                                              .secondary
+                                              .withValues(alpha: 0.25)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: _bubbleFor(doc, data, time),
                                 ),
-                                child: _bubbleFor(doc, data, time),
                               ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                    // "Nach unten"-Knopf mit Zähler, wenn man weiter oben liest.
-                    if (!_atBottom)
-                      Positioned(
-                        right: 12,
-                        bottom: 12,
-                        child: Badge(
-                          isLabelVisible: _newWhileAway > 0,
-                          label: Text('$_newWhileAway'),
-                          child: FloatingActionButton.small(
-                            heroTag: 'nachUnten',
-                            tooltip: 'Zur neuesten Nachricht',
-                            onPressed: _scrollToBottom,
-                            child: const Icon(
-                              Icons.keyboard_arrow_down_rounded,
+                            ],
+                          );
+                        },
+                      ),
+                      // "Nach unten"-Knopf mit Zähler, wenn man weiter oben liest.
+                      if (!_atBottom)
+                        Positioned(
+                          right: 12,
+                          bottom: 12,
+                          child: Badge(
+                            isLabelVisible: _newWhileAway > 0,
+                            label: Text('$_newWhileAway'),
+                            child: FloatingActionButton.small(
+                              heroTag: 'nachUnten',
+                              tooltip: 'Zur neuesten Nachricht',
+                              onPressed: _scrollToBottom,
+                              child: const Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                );
-              },
+                    ],
+                  );
+                },
+              ),
             ),
           ),
           if (_uploading) const LinearProgressIndicator(),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
@@ -52,7 +53,60 @@ class CoupleService {
   String get _uid => FirebaseAuth.instance.currentUser!.uid;
 
   /// Profil der Partnerin/des Partners (Name, Profilbild) – null, solange niemand beigetreten ist.
-  Stream<Map<String, dynamic>?> partnerStream(
+  /// Hast du einen Spitznamen festgelegt (Wir-Seite), steht dieser unter 'name'.
+  Stream<Map<String, dynamic>?> partnerStream(String coupleId) =>
+      _withNickname(_partnerProfile(coupleId));
+
+  /// Eigener Name für deinen Schatz – nur du siehst ihn. Leer = ihr eigener Name.
+  Future<void> setPartnerNickname(String nickname) => _db
+      .collection('users')
+      .doc(_uid)
+      .set({'partnerNickname': nickname.trim()}, SetOptions(merge: true));
+
+  // Verbindet das Profil der anderen Person mit deinem Spitznamen für sie.
+  Stream<Map<String, dynamic>?> _withNickname(
+    Stream<Map<String, dynamic>?> partner,
+  ) {
+    late final StreamController<Map<String, dynamic>?> out;
+    StreamSubscription<Map<String, dynamic>?>? a, b;
+    Map<String, dynamic>? profile;
+    var hasProfile = false;
+    String? nickname;
+    void emit() {
+      if (!hasProfile) return;
+      final p = profile;
+      out.add(
+        p == null
+            ? null
+            : {
+                ...p,
+                'ownName': p['name'],
+                if (nickname != null && nickname!.isNotEmpty) 'name': nickname,
+              },
+      );
+    }
+
+    out = StreamController(
+      onListen: () {
+        a = partner.listen((v) {
+          profile = v;
+          hasProfile = true;
+          emit();
+        }, onError: out.addError);
+        b = myProfileStream().listen((me) {
+          nickname = (me?['partnerNickname'] as String?)?.trim();
+          emit();
+        }, onError: out.addError);
+      },
+      onCancel: () async {
+        await a?.cancel();
+        await b?.cancel();
+      },
+    );
+    return out.stream;
+  }
+
+  Stream<Map<String, dynamic>?> _partnerProfile(
     String coupleId,
   ) => _db.collection('couples').doc(coupleId).snapshots().asyncExpand((
     couple,

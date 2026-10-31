@@ -147,7 +147,7 @@ class _NextCountdown extends StatelessWidget {
         final days = left.isNegative ? 0 : left.inDays;
 
         Widget chip(String text) => Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
           decoration: BoxDecoration(
             color: Kitsune.night,
             borderRadius: BorderRadius.circular(2),
@@ -155,13 +155,14 @@ class _NextCountdown extends StatelessWidget {
           child: Text(
             text,
             style: const TextStyle(
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: FontWeight.w700,
               color: Kitsune.paper,
             ),
           ),
         );
 
+        // Kompaktes Ticket: Zahl, Titel und Restzeit in einer Zeile.
         final ticket = Material(
           color: Kitsune.paper,
           child: InkWell(
@@ -172,87 +173,66 @@ class _NextCountdown extends StatelessWidget {
             ),
             child: Container(
               // Doppelter Rahmen: Creme-Rand, dann feine nachtblaue Linie.
-              margin: const EdgeInsets.all(4),
+              margin: const EdgeInsets.all(3),
               decoration: BoxDecoration(
                 border: Border.all(color: const Color(0x4D133174)),
               ),
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
               child: c == null
                   ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 18),
+                      padding: EdgeInsets.symmetric(vertical: 8),
                       child: Text(
-                        'Noch kein Countdown. Tippe hier, um euren nächsten '
-                        'Ausflug oder Jahrestag einzutragen.',
-                        style: TextStyle(color: Kitsune.night, fontSize: 14),
+                        'Noch kein Countdown – tippe hier, um einen einzutragen.',
+                        style: TextStyle(color: Kitsune.night, fontSize: 13),
                       ),
                     )
-                  : Stack(
+                  : Row(
                       children: [
-                        Row(
-                          children: [
-                            SizedBox(
-                              width: 76,
-                              child: Column(
+                        Text(
+                          '$days',
+                          style: AppTheme.serif(
+                            size: 30,
+                            color: Kitsune.indigo,
+                            height: 1,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          days == 1 ? 'TAG' : 'TAGE',
+                          style: AppTheme.label(color: Kitsune.plum, size: 10),
+                        ),
+                        Container(
+                          width: 1,
+                          height: 30,
+                          margin: const EdgeInsets.symmetric(horizontal: 12),
+                          color: const Color(0x4D133174),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                c.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTheme.serif(
+                                  size: 16,
+                                  color: Kitsune.night,
+                                  height: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Wrap(
+                                spacing: 5,
                                 children: [
-                                  Text(
-                                    'NOCH',
-                                    style: AppTheme.label(color: Kitsune.plum),
-                                  ),
-                                  Text(
-                                    '$days',
-                                    style: AppTheme.serif(
-                                      size: 56,
-                                      color: Kitsune.indigo,
-                                      height: 1,
-                                    ),
-                                  ),
-                                  Text(
-                                    days == 1 ? 'TAG' : 'TAGE',
-                                    style: AppTheme.label(color: Kitsune.plum),
-                                  ),
+                                  chip('${left.inHours % 24} Std'),
+                                  chip('${left.inMinutes % 60} Min'),
                                 ],
                               ),
-                            ),
-                            Container(
-                              width: 1,
-                              height: 80,
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                              ),
-                              color: const Color(0x4D133174),
-                            ),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    c.title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: AppTheme.serif(
-                                      size: 18,
-                                      color: Kitsune.night,
-                                      height: 1.2,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Wrap(
-                                    spacing: 6,
-                                    children: [
-                                      chip('${left.inHours % 24} Std'),
-                                      chip('${left.inMinutes % 60} Min'),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                        const Positioned(
-                          right: 0,
-                          top: 0,
-                          child: Hanko('旅', size: 24, filled: false),
-                        ),
+                        const Hanko('旅', size: 20, filled: false),
                       ],
                     ),
             ),
@@ -260,7 +240,7 @@ class _NextCountdown extends StatelessWidget {
         );
 
         Widget rail(bool left) => Container(
-          width: 12,
+          width: 8,
           decoration: BoxDecoration(
             color: Kitsune.plum,
             borderRadius: BorderRadius.circular(6),

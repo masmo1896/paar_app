@@ -14,8 +14,9 @@ import '../widgets/who.dart';
 import 'albums_screen.dart';
 import 'countdown_screen.dart';
 
-/// "Wir"-Seite wie im Kitsune-Mockup: zwei Füchse auf der Brücke, eure Namen,
-/// Erinnerungen als Polaroids (eure Alben) und die Einstellungen.
+/// "Wir"-Seite: zwei Füchse auf der Brücke, eure Namen und darunter eure
+/// Erinnerungen (Alben) als Ordner. Die Einstellungen liegen hinter dem
+/// Zahnrad oben rechts auf einer eigenen Seite.
 class UsScreen extends StatelessWidget {
   const UsScreen({super.key, required this.couple});
 
@@ -30,12 +31,35 @@ class UsScreen extends StatelessWidget {
         children: [
           SizedBox(
             height: 236 + top,
-            child: SvgPicture.asset(
-              KitsuneArt.foxes.asset,
-              fit: BoxFit.cover,
-              alignment: Alignment.bottomCenter,
-              semanticsLabel:
-                  'Zwei Füchse auf einer Brücke, ihre Schwänze bilden ein Herz',
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                SvgPicture.asset(
+                  KitsuneArt.foxes.asset,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.bottomCenter,
+                  semanticsLabel: 'Zwei Füchse auf einer Brücke, ihre Schwänze bilden ein Herz',
+                ),
+                Positioned(
+                  top: top + 8,
+                  right: 12,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Kitsune.deep.withValues(alpha: 0.75),
+                    ),
+                    child: IconButton(
+                      tooltip: 'Einstellungen',
+                      icon: const Icon(Icons.settings_outlined),
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => SettingsScreen(couple: couple),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           Padding(
@@ -44,10 +68,8 @@ class UsScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _Names(couple: couple),
-                const SizedBox(height: 14),
+                const SizedBox(height: 18),
                 _Memories(couple: couple),
-                const SizedBox(height: 20),
-                _Settings(couple: couple),
               ],
             ),
           ),
@@ -55,6 +77,27 @@ class UsScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Einstellungen auf eigener Seite: Benachrichtigungen bis Abmelden.
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({super.key, required this.couple});
+
+  final Couple couple;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: kitsuneAppBar(
+      art: KitsuneArt.lanterns,
+      kana: 'せってい',
+      titleText: 'Einstellungen',
+      height: 96,
+    ),
+    body: ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [_Settings(couple: couple)],
+    ),
+  );
 }
 
 /// "Marc & Schatz" und darunter "zusammen seit …" (aus eurem Jahrestag-Countdown).
@@ -141,32 +184,40 @@ Future<void> _editNickname(BuildContext context, String current) async {
   if (name != null) await CoupleService.instance.setPartnerNickname(name);
 }
 
-/// Die drei neuesten Alben als schräge Polaroids.
+/// Alle Alben als Ordner: schräge Polaroids im Raster, am Ende "Neues Album".
 class _Memories extends StatelessWidget {
   const _Memories({required this.couple});
 
   final Couple couple;
 
-  void _openAll(BuildContext context) => Navigator.of(
-    context,
-  ).push(MaterialPageRoute<void>(builder: (_) => AlbumsScreen(couple: couple)));
+  void _open(BuildContext context, String albumId) =>
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => AlbumScreen(couple: couple, albumId: albumId),
+        ),
+      );
+
+  Future<void> _create(BuildContext context) async {
+    final name = await askText(
+      context,
+      title: 'Neues Album',
+      hint: 'z. B. Budapest 2027',
+    );
+    if (name == null || name.trim().isEmpty || !context.mounted) return;
+    final id = await AlbumService.instance.createAlbum(
+      couple.coupleId,
+      name.trim(),
+    );
+    if (context.mounted) _open(context, id);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text('Erinnerungen', style: AppTheme.serif(size: 16)),
-            ),
-            TextButton(
-              onPressed: () => _openAll(context),
-              child: const Text('Alle ›', style: TextStyle(fontSize: 12)),
-            ),
-          ],
-        ),
+        Text('Erinnerungen', style: AppTheme.serif(size: 18)),
+        const SizedBox(height: 12),
         StreamBuilder<List<Album>>(
           stream: AlbumService.instance.albums(couple.coupleId),
           builder: (context, snap) {
@@ -177,37 +228,26 @@ class _Memories extends StatelessWidget {
                 if (bt == null) return 1;
                 return bt.compareTo(at);
               });
-            const tilts = [(-0.035, 0.0), (0.026, 4.0), (-0.017, 0.0)];
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < 3; i++) ...[
-                  if (i > 0) const SizedBox(width: 10),
-                  Expanded(
-                    child: Transform.translate(
-                      offset: Offset(0, tilts[i].$2),
-                      child: Transform.rotate(
-                        angle: tilts[i].$1,
-                        child: i < albums.length
-                            ? _Polaroid(
-                                album: albums[i],
-                                onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => AlbumScreen(
-                                      couple: couple,
-                                      albumId: albums[i].id,
-                                    ),
-                                  ),
-                                ),
-                              )
-                            : i == albums.length
-                            ? _Polaroid(onTap: () => _openAll(context))
-                            : const SizedBox.shrink(),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+            const tilts = [-0.035, 0.026, -0.017, 0.02, -0.028, 0.012];
+            final tiles = [
+              for (final album in albums)
+                _Polaroid(album: album, onTap: () => _open(context, album.id)),
+              _Polaroid(onTap: () => _create(context)),
+            ];
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: tiles.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 16,
+                crossAxisSpacing: 10,
+                childAspectRatio: 0.82,
+              ),
+              itemBuilder: (context, i) => Transform.rotate(
+                angle: tilts[i % tilts.length],
+                child: tiles[i],
+              ),
             );
           },
         ),
@@ -241,21 +281,23 @@ class _Polaroid extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Container(
-              height: 76,
-              width: double.infinity,
-              color: Kitsune.indigo,
-              child: cover != null
-                  ? Image.network(
-                      cover,
-                      fit: BoxFit.cover,
-                      cacheWidth: 300,
-                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                    )
-                  : Icon(
-                      album == null ? Icons.add : Icons.photo_outlined,
-                      color: Kitsune.paper,
-                    ),
+            // Bild füllt den Ordner, Name darunter.
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                color: Kitsune.indigo,
+                child: cover != null
+                    ? Image.network(
+                        cover,
+                        fit: BoxFit.cover,
+                        cacheWidth: 300,
+                        errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                      )
+                    : Icon(
+                        album == null ? Icons.add : Icons.photo_outlined,
+                        color: Kitsune.paper,
+                      ),
+              ),
             ),
             const SizedBox(height: 5),
             Text(

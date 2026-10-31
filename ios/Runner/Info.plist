@@ -70,6 +70,8 @@
 	<string>Damit du Fotos und Selfie-Videos für deine Partnerin aufnehmen kannst.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Damit du Fotos aus deiner Galerie im Chat teilen kannst.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Damit nur du die App mit Face ID entsperren kannst.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Damit du Sprachnachrichten und Videobotschaften aufnehmen kannst.</string>
 </dict>

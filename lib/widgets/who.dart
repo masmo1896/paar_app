@@ -10,12 +10,21 @@ class Couple {
     required this.myUid,
     this.partnerUid,
     this.partnerName,
+    this.myName,
   });
 
   final String coupleId;
   final String myUid;
   final String? partnerUid; // null, solange niemand beigetreten ist
   final String? partnerName;
+  final String? myName;
+
+  /// Anfangsbuchstabe für die runden Namens-Stempel (M, S …).
+  String initialOf(String uid) {
+    final name = (uid == myUid ? myName : partnerName)?.trim();
+    if (name == null || name.isEmpty) return uid == myUid ? 'D' : 'S';
+    return name.characters.first.toUpperCase();
+  }
 
   String get partnerLabel {
     final name = partnerName?.trim();

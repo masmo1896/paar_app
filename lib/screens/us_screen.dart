@@ -9,6 +9,7 @@ import '../services/planner_service.dart';
 import '../services/push_service.dart';
 import '../theme.dart';
 import '../utils/dates.dart';
+import '../widgets/app_lock.dart';
 import '../widgets/who.dart';
 import 'albums_screen.dart';
 import 'countdown_screen.dart';
@@ -298,6 +299,25 @@ class _Settings extends StatelessWidget {
                       .collection('users')
                       .doc(couple.myUid)
                       .set({'anniversaryReminder': v}, SetOptions(merge: true)),
+                ),
+              ),
+              divider,
+              ValueListenableBuilder<bool?>(
+                valueListenable: AppLock.instance.enabled,
+                builder: (context, on, _) => _Row(
+                  icon: Icons.fingerprint_rounded,
+                  label: 'App-Sperre',
+                  trailing: _Switch(
+                    value: on == true,
+                    label: 'App-Sperre',
+                    onChanged: (v) async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      final error = await AppLock.instance.setEnabled(v);
+                      if (error != null) {
+                        messenger.showSnackBar(SnackBar(content: Text(error)));
+                      }
+                    },
+                  ),
                 ),
               ),
               divider,

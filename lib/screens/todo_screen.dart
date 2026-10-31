@@ -15,17 +15,27 @@ class TodoScreen extends StatefulWidget {
   State<TodoScreen> createState() => _TodoScreenState();
 }
 
-enum _Filter { alle, meine, ihre }
+enum _Filter { alle, meine, ihre, einkauf }
 
 class _TodoScreenState extends State<TodoScreen> {
   _Filter _filter = _Filter.alle;
+  final _newTitle = TextEditingController();
 
   Couple get couple => widget.couple;
 
+  @override
+  void dispose() {
+    _newTitle.dispose();
+    super.dispose();
+  }
+
   bool _matches(Todo t) => switch (_filter) {
-    _Filter.alle => true,
-    _Filter.meine => t.assignee == couple.myUid || t.assignee == both,
-    _Filter.ihre => t.assignee == couple.partnerUid || t.assignee == both,
+    _Filter.alle => !t.isShopping,
+    _Filter.meine =>
+      !t.isShopping && (t.assignee == couple.myUid || t.assignee == both),
+    _Filter.ihre =>
+      !t.isShopping && (t.assignee == couple.partnerUid || t.assignee == both),
+    _Filter.einkauf => t.isShopping,
   };
 
   // Offene zuerst: nach Fälligkeit (ohne Datum ganz unten), sonst alphabetisch.
@@ -41,92 +51,177 @@ class _TodoScreenState extends State<TodoScreen> {
     return a.title.toLowerCase().compareTo(b.title.toLowerCase());
   }
 
+  // Erledigte: zuletzt erledigte zuerst.
+  int _byDoneAt(Todo a, Todo b) =>
+      (b.doneAt ?? DateTime(2100)).compareTo(a.doneAt ?? DateTime(2100));
+
+  /// Schnell hinzufügen über das Feld unten: für beide, ohne Datum.
+  Future<void> _quickAdd() async {
+    final title = _newTitle.text.trim();
+    if (title.isEmpty) return;
+    _newTitle.clear();
+    await PlannerService.instance.saveTodo(
+      couple.coupleId,
+      title: title,
+      assignee: _filter == _Filter.meine ? couple.myUid : both,
+      list: _filter == _Filter.einkauf ? shoppingList : todoList,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: kitsuneAppBar(
-        art: KitsuneArt.koi,
-        kana: 'やること',
-        titleText: 'Unsere To-dos',
-        height: 104,
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Wrap(
-              spacing: 8,
-              children: [
-                for (final (filter, label) in [
-                  (_Filter.alle, 'Alle'),
-                  (_Filter.meine, 'Meine'),
-                  if (couple.partnerUid != null)
-                    (_Filter.ihre, couple.partnerLabel),
-                ])
-                  ChoiceChip(
-                    label: Text(label),
-                    selected: _filter == filter,
-                    showCheckmark: false,
-                    labelStyle: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: _filter == filter ? Kitsune.deep : Kitsune.paper,
+    final shopping = _filter == _Filter.einkauf;
+    return StreamBuilder<List<Todo>>(
+      stream: PlannerService.instance.todos(couple.coupleId),
+      builder: (context, snap) {
+        final everything = snap.data;
+        // Zähler oben rechts wie im Mockup: "2 / 5 済" (erledigt / alle).
+        final counted = (everything ?? [])
+            .where((t) => t.isShopping == shopping)
+            .toList();
+        final doneCount = counted.where((t) => t.done).length;
+
+        return Scaffold(
+          appBar: kitsuneAppBar(
+            art: KitsuneArt.koi,
+            kana: shopping ? 'かいもの' : 'やること',
+            titleText: shopping ? 'Einkaufsliste' : 'Unsere To-dos',
+            height: 104,
+            actions: [
+              if (counted.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(right: 20, top: 34),
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Kitsune.paper,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                      child: Text(
+                        '$doneCount / ${counted.length} 済',
+                        style: AppTheme.serif(size: 15, color: Kitsune.night),
+                      ),
                     ),
-                    onSelected: (_) => setState(() => _filter = filter),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
-          Expanded(
-            child: StreamBuilder<List<Todo>>(
-              stream: PlannerService.instance.todos(couple.coupleId),
-              builder: (context, snap) {
-                if (!snap.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final all = snap.data!.where(_matches).toList();
-                final open = all.where((t) => !t.done).toList()..sort(_byDue);
-                final done = all.where((t) => t.done).toList()..sort(_byDue);
-                if (all.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'Noch nichts zu tun 🎉\nMit + fügst du etwas hinzu.',
-                      textAlign: TextAlign.center,
-                    ),
-                  );
-                }
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+          body: Column(
+            children: [
+              SizedBox(
+                height: 50,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
                   children: [
-                    for (final t in open)
-                      _TodoTile(todo: t, couple: couple, onEdit: _edit),
-                    if (done.isNotEmpty) ...[
+                    for (final (filter, label) in [
+                      (_Filter.alle, 'Alle'),
+                      (
+                        _Filter.meine,
+                        couple.myName?.trim().isNotEmpty == true
+                            ? couple.myName!.trim()
+                            : 'Meine',
+                      ),
+                      if (couple.partnerUid != null)
+                        (_Filter.ihre, couple.partnerLabel),
+                      (_Filter.einkauf, 'Einkauf'),
+                    ])
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
-                        child: Text(
-                          'Erledigt (${done.length})',
-                          style: Theme.of(context).textTheme.labelLarge
-                              ?.copyWith(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                              ),
+                        padding: const EdgeInsets.only(right: 8),
+                        child: _FilterChip(
+                          label: label,
+                          icon: filter == _Filter.einkauf
+                              ? Icons.shopping_basket_outlined
+                              : null,
+                          selected: _filter == filter,
+                          onTap: () => setState(() => _filter = filter),
                         ),
                       ),
-                      for (final t in done)
-                        _TodoTile(todo: t, couple: couple, onEdit: _edit),
-                    ],
                   ],
-                );
-              },
-            ),
+                ),
+              ),
+              Expanded(child: _list(context, everything, shopping)),
+              // Eingabefeld unten wie im Mockup: Text + roter Plus-Knopf.
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                padding: const EdgeInsets.fromLTRB(14, 4, 4, 4),
+                decoration: BoxDecoration(
+                  color: Kitsune.deep.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: const Color(0x59F3EBD3)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _newTitle,
+                        textCapitalization: TextCapitalization.sentences,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _quickAdd(),
+                        style: const TextStyle(fontSize: 14.5),
+                        decoration: InputDecoration(
+                          hintText: shopping
+                              ? 'Was brauchen wir noch…'
+                              : 'Neues To-do für euch zwei…',
+                          filled: false,
+                          isDense: true,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton.filled(
+                      tooltip: 'Hinzufügen',
+                      onPressed: _quickAdd,
+                      style: IconButton.styleFrom(
+                        backgroundColor: Kitsune.lantern,
+                        foregroundColor: Kitsune.deep,
+                        fixedSize: const Size(44, 44),
+                      ),
+                      icon: const Icon(Icons.add_rounded, size: 24),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'Aufgabe hinzufügen',
-        onPressed: () => _edit(null),
-        child: const Icon(Icons.add),
-      ),
+        );
+      },
+    );
+  }
+
+  Widget _list(BuildContext context, List<Todo>? everything, bool shopping) {
+    if (everything == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final all = everything.where(_matches).toList();
+    final open = all.where((t) => !t.done).toList()..sort(_byDue);
+    final done = all.where((t) => t.done).toList()..sort(_byDoneAt);
+    if (all.isEmpty) {
+      return Center(
+        child: Text(
+          shopping
+              ? 'Der Kühlschrank ist voll.\nUnten trägst du ein, was fehlt.'
+              : 'Noch nichts zu tun.\nUnten trägst du etwas ein.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Kitsune.mist),
+        ),
+      );
+    }
+    final items = [...open, ...done];
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+      itemCount: items.length,
+      itemBuilder: (context, i) =>
+          _TodoTile(todo: items[i], couple: couple, index: i, onEdit: _edit),
     );
   }
 
@@ -136,118 +231,256 @@ class _TodoScreenState extends State<TodoScreen> {
   );
 }
 
+/// Filter-Knopf: gewählt = Creme mit nachtblauer Schrift, sonst nur Umriss.
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    selected: selected,
+    button: true,
+    child: Material(
+      color: selected ? Kitsune.paper : Colors.transparent,
+      shape: StadiumBorder(
+        side: BorderSide(
+          color: selected ? Kitsune.paper : const Color(0x66F3EBD3),
+        ),
+      ),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(
+                  icon,
+                  size: 16,
+                  color: selected ? Kitsune.night : Kitsune.paper,
+                ),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? Kitsune.night : Kitsune.paper,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Papierkarte wie im Mockup: leicht schräg, mit buntem Klebeband oben,
+/// rundem Kreis zum Abhaken (erledigt = roter 済-Stempel) und Namens-Stempel rechts.
 class _TodoTile extends StatelessWidget {
   const _TodoTile({
     required this.todo,
     required this.couple,
+    required this.index,
     required this.onEdit,
   });
 
   final Todo todo;
   final Couple couple;
+  final int index;
   final ValueChanged<Todo> onEdit;
 
-  // Auf Papier: Schrift und Symbole der Karte werden nachtblau.
-  @override
-  Widget build(BuildContext context) => Paper(child: Builder(builder: _build));
+  static const _tapes = [
+    Kitsune.lantern,
+    Kitsune.aqua,
+    Kitsune.sky,
+    Kitsune.plum,
+  ];
 
-  Widget _build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+  String? _subtitle() {
+    if (todo.done) {
+      final at = todo.doneAt;
+      if (at == null) return 'erledigt';
+      final days = daysBetween(DateTime(at.year, at.month, at.day), today());
+      return switch (days) {
+        0 => 'erledigt heute',
+        1 => 'erledigt gestern',
+        < 7 => 'erledigt am ${weekdaysShort[at.weekday - 1]}',
+        _ => 'erledigt am ${shortDay(at)}',
+      };
+    }
     final due = todo.due;
-    final overdue = due != null && !todo.done && due.isBefore(today());
-    final isToday = due != null && sameDay(due, today());
+    if (due == null) return null;
+    if (due.isBefore(today())) return 'überfällig · ${shortDay(due)}';
+    return relativeDay(due);
+  }
 
-    // Papierkarte; erledigte werden blasser und bekommen den roten 済-Stempel.
-    return Opacity(
-      opacity: todo.done ? 0.82 : 1,
-      child: Card(
-        margin: const EdgeInsets.only(top: 10),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () => onEdit(todo),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(4, 4, 14, 4),
-            child: Row(
-              children: [
-                // Eigene Hitbox von 48 Pixeln, damit das Abhaken leicht trifft.
-                IconButton(
-                  tooltip: todo.done ? 'Wieder öffnen' : 'Abhaken',
-                  onPressed: () => PlannerService.instance.setTodoDone(
-                    couple.coupleId,
-                    todo.id,
-                    !todo.done,
+  @override
+  Widget build(BuildContext context) {
+    final done = todo.done;
+    final bg = done ? const Color(0xFFD9D3BF) : Kitsune.paper;
+    final sub = _subtitle();
+    final overdue = !done && todo.due != null && todo.due!.isBefore(today());
+    final tapeLeft = 24.0 + (index * 47) % 180;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Transform.rotate(
+        angle: index.isOdd ? 0.009 : -0.009,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Material(
+              color: bg,
+              borderRadius: BorderRadius.circular(3),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => onEdit(todo),
+                child: Container(
+                  // Feiner Innenrahmen wie bei den Papierkarten.
+                  margin: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0x40133174)),
                   ),
-                  icon: todo.done
-                      ? const Hanko('済', size: 28)
-                      : Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Kitsune.indigo, width: 2),
-                          ),
-                        ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  padding: const EdgeInsets.fromLTRB(2, 2, 10, 2),
+                  child: Row(
                     children: [
-                      Text(
-                        todo.title,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: todo.done
-                              ? FontWeight.normal
-                              : FontWeight.w600,
-                          decoration: todo.done
-                              ? TextDecoration.lineThrough
-                              : null,
-                          color: todo.done
-                              ? scheme.onSurfaceVariant
-                              : scheme.onSurface,
+                      IconButton(
+                        tooltip: done ? 'Wieder öffnen' : 'Abhaken',
+                        onPressed: () => PlannerService.instance.setTodoDone(
+                          couple.coupleId,
+                          todo.id,
+                          !done,
                         ),
-                      ),
-                      if (due != null && !todo.done)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.event_outlined,
-                                size: 14,
-                                color: overdue
-                                    ? scheme.error
-                                    : scheme.onSurfaceVariant,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                overdue
-                                    ? 'Überfällig · ${shortDay(due)}'
-                                    : relativeDay(due),
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: isToday || overdue
-                                      ? FontWeight.w700
-                                      : null,
-                                  color: overdue
-                                      ? scheme.error
-                                      : scheme.onSurfaceVariant,
+                        icon: done
+                            ? const Hanko('済', size: 28)
+                            : Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Kitsune.indigo,
+                                    width: 2,
+                                  ),
                                 ),
                               ),
-                            ],
-                          ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              todo.title,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: done
+                                    ? FontWeight.w500
+                                    : FontWeight.w700,
+                                color: done
+                                    ? const Color(0xFF4A5470)
+                                    : Kitsune.night,
+                                decoration: done
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                              ),
+                            ),
+                            if (sub != null)
+                              Text(
+                                sub,
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: overdue ? FontWeight.w700 : null,
+                                  color: overdue
+                                      ? const Color(0xFFB0204D)
+                                      : Kitsune.inkSoft,
+                                ),
+                              ),
+                          ],
                         ),
+                      ),
+                      const SizedBox(width: 8),
+                      _WhoStamp(couple: couple, who: todo.assignee),
                     ],
                   ),
                 ),
-                if (!todo.done) ...[
-                  const SizedBox(width: 8),
-                  WhoPill(couple: couple, who: todo.assignee),
-                ],
-              ],
+              ),
             ),
-          ),
+            // Klebeband-Streifen oben auf der Karte.
+            Positioned(
+              top: -6,
+              left: tapeLeft,
+              child: IgnorePointer(
+                child: Transform.rotate(
+                  angle: index.isOdd ? 0.07 : -0.09,
+                  child: Container(
+                    width: 46,
+                    height: 12,
+                    color: _tapes[todo.id.hashCode.abs() % _tapes.length]
+                        .withValues(alpha: 0.85),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+/// Runder Namens-Stempel: du = Indigo, dein Schatz = Pflaume, beide = beide Kreise.
+class _WhoStamp extends StatelessWidget {
+  const _WhoStamp({required this.couple, required this.who});
+
+  final Couple couple;
+  final String who;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget circle(String uid) => Container(
+      width: 28,
+      height: 28,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: uid == couple.myUid ? Kitsune.indigo : Kitsune.plum,
+        border: Border.all(color: Kitsune.paper, width: 1.5),
+      ),
+      child: Text(
+        couple.initialOf(uid),
+        style: AppTheme.serif(size: 13, color: Kitsune.paper),
+      ),
+    );
+    final partner = couple.partnerUid;
+    return Semantics(
+      label: couple.label(who),
+      child: ExcludeSemantics(
+        child: who == both && partner != null
+            ? SizedBox(
+                width: 46,
+                height: 28,
+                child: Stack(
+                  children: [
+                    circle(couple.myUid),
+                    Positioned(left: 18, child: circle(partner)),
+                  ],
+                ),
+              )
+            : circle(who == both ? couple.myUid : who),
       ),
     );
   }

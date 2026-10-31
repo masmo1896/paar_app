@@ -21,6 +21,8 @@ class Todo {
     required this.assignee,
     required this.due,
     required this.done,
+    this.doneAt,
+    this.list = todoList,
   });
 
   factory Todo.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -31,6 +33,8 @@ class Todo {
       assignee: d['assignee'] as String? ?? both,
       due: parseDayKey(d['due'] as String?),
       done: d['done'] as bool? ?? false,
+      doneAt: (d['doneAt'] as Timestamp?)?.toDate(),
+      list: d['list'] as String? ?? todoList,
     );
   }
 
@@ -39,7 +43,15 @@ class Todo {
   final String assignee; // uid oder 'both'
   final DateTime? due;
   final bool done;
+  final DateTime? doneAt;
+  final String list; // 'todo' oder 'shopping' (Einkaufsliste)
+
+  bool get isShopping => list == shoppingList;
 }
+
+/// Die zwei Listen: To-dos und Einkaufsliste liegen in derselben Sammlung.
+const todoList = 'todo';
+const shoppingList = 'shopping';
 
 class CalEvent {
   const CalEvent({
@@ -160,6 +172,7 @@ class PlannerService {
     required String title,
     required String assignee,
     DateTime? due,
+    String list = todoList,
   }) {
     final data = {
       'title': title,
@@ -169,6 +182,7 @@ class PlannerService {
     if (id != null) return _todos(coupleId).doc(id).update(data);
     return _todos(coupleId).add({
       ...data,
+      'list': list,
       'done': false,
       'createdBy': _uid,
       'createdAt': FieldValue.serverTimestamp(),

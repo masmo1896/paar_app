@@ -284,63 +284,105 @@ class _MonthGrid extends StatelessWidget {
         .take(3)
         .toList();
 
+    // Mehrtägige Termine (z. B. "Wochenende am See") als durchgehendes Band,
+    // abgerundet am ersten und letzten Tag bzw. am Wochenanfang und -ende.
+    final trip = events.where((e) => e.multiDay && e.occursOn(day)).firstOrNull;
+    final band = trip == null
+        ? null
+        : Positioned(
+            left: 0,
+            right: 0,
+            top: 6,
+            height: 34,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: whoColors(
+                  context,
+                  couple,
+                  trip.who,
+                ).bg.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.horizontal(
+                  left: Radius.circular(
+                    sameDay(day, trip.start) || day.weekday == 1 ? 17 : 0,
+                  ),
+                  right: Radius.circular(
+                    sameDay(day, trip.end) || day.weekday == 7 ? 17 : 0,
+                  ),
+                ),
+              ),
+            ),
+          );
+
     return InkWell(
       borderRadius: BorderRadius.circular(6),
       onTap: () => onSelect(day),
       child: SizedBox(
         height: 46,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
           children: [
-            // Gewählter Tag: roter, leicht schräger Stempel mit Doppelrand.
-            Transform.rotate(
-              angle: isSelected ? -0.1 : 0,
-              child: Container(
-                width: 32,
-                height: 32,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isSelected ? Kitsune.lantern : null,
-                  border: isToday && !isSelected
-                      ? Border.all(color: Kitsune.lantern, width: 1.5)
-                      : null,
-                  boxShadow: isSelected
-                      ? const [
-                          BoxShadow(color: Kitsune.night, spreadRadius: 2),
-                          BoxShadow(color: Kitsune.lantern, spreadRadius: 3.5),
-                        ]
-                      : null,
-                ),
-                child: Text(
-                  '$dayNumber',
-                  style: AppTheme.serif(
-                    size: 15,
-                    color: isSelected
-                        ? Kitsune.paper
-                        : day.weekday >= 6
-                        ? Kitsune.aqua
-                        : scheme.onSurface,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 3),
-            SizedBox(
-              height: 5,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
+            ?band,
+            Positioned.fill(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  for (final who in owners)
-                    Container(
-                      width: 5,
-                      height: 5,
-                      margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                  // Gewählter Tag: roter, leicht schräger Stempel mit Doppelrand.
+                  Transform.rotate(
+                    angle: isSelected ? -0.1 : 0,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: whoColors(context, couple, who).bg,
+                        color: isSelected ? Kitsune.lantern : null,
+                        border: isToday && !isSelected
+                            ? Border.all(color: Kitsune.lantern, width: 1.5)
+                            : null,
+                        boxShadow: isSelected
+                            ? const [
+                                BoxShadow(
+                                  color: Kitsune.night,
+                                  spreadRadius: 2,
+                                ),
+                                BoxShadow(
+                                  color: Kitsune.lantern,
+                                  spreadRadius: 3.5,
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Text(
+                        '$dayNumber',
+                        style: AppTheme.serif(
+                          size: 15,
+                          color: isSelected
+                              ? Kitsune.paper
+                              : day.weekday >= 6
+                              ? Kitsune.aqua
+                              : scheme.onSurface,
+                        ),
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 3),
+                  SizedBox(
+                    height: 5,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final who in owners)
+                          Container(
+                            width: 5,
+                            height: 5,
+                            margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: whoColors(context, couple, who).bg,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),

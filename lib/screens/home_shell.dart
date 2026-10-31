@@ -32,6 +32,7 @@ class _HomeShellState extends State<HomeShell> {
   int _tab = 0;
   final _myUid = FirebaseAuth.instance.currentUser!.uid;
   StreamSubscription<RemoteMessage>? _foregroundSub;
+  final _myProfile = CoupleService.instance.myProfileStream();
 
   static const _tabNames = ['Home', 'Chat', 'Kalender', 'To-dos', 'Wir'];
 
@@ -89,26 +90,35 @@ class _HomeShellState extends State<HomeShell> {
       stream: CoupleService.instance.partnerStream(widget.coupleId),
       builder: (context, snap) {
         final partner = snap.data;
-        final couple = Couple(
-          coupleId: widget.coupleId,
-          myUid: _myUid,
-          partnerUid: partner?['uid'] as String?,
-          partnerName: partner?['name'] as String?,
-        );
-        return Scaffold(
-          body: IndexedStack(
-            index: _tab,
-            children: [
-              HomeScreen(couple: couple, onOpenTab: _open),
-              ChatScreen(coupleId: widget.coupleId, active: _tab == 1),
-              CalendarScreen(couple: couple),
-              TodoScreen(couple: couple),
-              UsScreen(couple: couple),
-            ],
+        return StreamBuilder<Map<String, dynamic>?>(
+          stream: _myProfile,
+          builder: (context, me) => _scaffold(
+            Couple(
+              coupleId: widget.coupleId,
+              myUid: _myUid,
+              partnerUid: partner?['uid'] as String?,
+              partnerName: partner?['name'] as String?,
+              myName: me.data?['name'] as String?,
+            ),
           ),
-          bottomNavigationBar: _KitsuneNav(selected: _tab, onSelect: _open),
         );
       },
+    );
+  }
+
+  Widget _scaffold(Couple couple) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _tab,
+        children: [
+          HomeScreen(couple: couple, onOpenTab: _open),
+          ChatScreen(coupleId: widget.coupleId, active: _tab == 1),
+          CalendarScreen(couple: couple),
+          TodoScreen(couple: couple),
+          UsScreen(couple: couple),
+        ],
+      ),
+      bottomNavigationBar: _KitsuneNav(selected: _tab, onSelect: _open),
     );
   }
 

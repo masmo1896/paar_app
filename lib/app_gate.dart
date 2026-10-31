@@ -5,6 +5,7 @@ import 'screens/auth_screen.dart';
 import 'screens/home_shell.dart';
 import 'screens/pairing_screen.dart';
 import 'services/couple_service.dart';
+import 'widgets/app_lock.dart';
 
 // Entscheidet, welcher Bildschirm gezeigt wird:
 // nicht eingeloggt -> Login, eingeloggt ohne Paar -> Verbinden, sonst -> Chat.
@@ -31,7 +32,7 @@ class AppGate extends StatelessWidget {
             }
             final coupleId = coupleSnap.data;
             if (coupleId == null) return const PairingScreen();
-            return HomeShell(coupleId: coupleId);
+            return AppLockGate(child: HomeShell(coupleId: coupleId));
           },
         );
       },

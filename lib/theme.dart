@@ -377,7 +377,9 @@ enum KitsuneArt {
   leaves('assets/kitsune/leaves.svg'),
   koi('assets/kitsune/koi.svg'),
   fox('assets/kitsune/fox.svg'),
-  foxes('assets/kitsune/foxes.svg');
+  foxes('assets/kitsune/foxes.svg'),
+  moonfox('assets/kitsune/moonfox.svg'),
+  foxlogo('assets/kitsune/foxlogo.svg');
 
   const KitsuneArt(this.asset);
   final String asset;
@@ -401,8 +403,22 @@ AppBar kitsuneAppBar({
   leading: leading,
   actions: titleAtBottom && actions != null
       ? [
+          // Dunkler runder Hintergrund, damit die Knöpfe auch vor dem Mond sichtbar sind.
           for (final a in actions)
-            Align(alignment: Alignment.topCenter, child: a),
+            Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 4, right: 4),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Kitsune.deep.withValues(alpha: 0.75),
+                  ),
+                  child: a,
+                ),
+              ),
+            ),
+          const SizedBox(width: 6),
         ]
       : actions,
   titleSpacing: 20,

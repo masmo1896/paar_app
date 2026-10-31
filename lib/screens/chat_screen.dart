@@ -7,6 +7,7 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../services/couple_service.dart';
 import '../theme.dart';
+import 'search_screen.dart';
 import '../widgets/gif_picker.dart';
 import '../widgets/fox_bubble.dart';
 import '../widgets/partner_header.dart';
@@ -120,6 +121,26 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOut,
     );
+  }
+
+  // Suche öffnen; ein angetippter Treffer kommt als Nachrichten-ID zurück.
+  Future<void> _openSearch() async {
+    final partner = await CoupleService.instance
+        .partnerStream(widget.coupleId)
+        .first;
+    if (!mounted) return;
+    final id = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => SearchScreen(
+          coupleId: widget.coupleId,
+          myUid: FirebaseAuth.instance.currentUser!.uid,
+          partnerName: (partner?['name'] as String?)?.trim().isNotEmpty == true
+              ? (partner!['name'] as String).trim()
+              : 'Dein Schatz',
+        ),
+      ),
+    );
+    if (id != null && mounted) _jumpToMessage(id);
   }
 
   // Zitat angetippt: zur Originalnachricht springen und sie kurz hervorheben.
@@ -483,7 +504,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         kana: '',
         title: PartnerTitle(coupleId: widget.coupleId),
         titleAtBottom: true,
-        actions: const [ChatMenu()],
+        actions: [
+          IconButton(
+            tooltip: 'Nachrichten suchen',
+            icon: const Icon(Icons.search_rounded),
+            onPressed: _openSearch,
+          ),
+          const ChatMenu(),
+        ],
         height: 176,
       ),
       body: Column(

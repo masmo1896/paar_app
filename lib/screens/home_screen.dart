@@ -40,6 +40,8 @@ class HomeScreen extends StatelessWidget {
                 _TodoSummary(couple: couple, onOpen: () => onOpenTab(3)),
                 const SizedBox(height: 14),
                 _LastMessage(couple: couple, onOpen: () => onOpenTab(1)),
+                const SizedBox(height: 14),
+                _ThinkingOfYou(couple: couple),
               ],
             ),
           ),
@@ -445,7 +447,7 @@ class _TodoSummary extends StatelessWidget {
     return StreamBuilder<List<Todo>>(
       stream: PlannerService.instance.todos(couple.coupleId),
       builder: (context, snap) {
-        final todos = snap.data ?? [];
+        final todos = (snap.data ?? []).where((t) => !t.isShopping).toList();
         final done = todos.where((t) => t.done).length;
         final open = todos.where((t) => !t.done).toList()
           ..sort((a, b) {
@@ -658,6 +660,93 @@ class _LastMessage extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Ein Tipp schickt "Ich denk an dich" in den Chat – mit kleinem Herzschlag.
+class _ThinkingOfYou extends StatefulWidget {
+  const _ThinkingOfYou({required this.couple});
+
+  final Couple couple;
+
+  @override
+  State<_ThinkingOfYou> createState() => _ThinkingOfYouState();
+}
+
+class _ThinkingOfYouState extends State<_ThinkingOfYou>
+    with SingleTickerProviderStateMixin {
+  late final _beat = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 520),
+  );
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _beat.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    if (_sending) return;
+    setState(() => _sending = true);
+    _beat.forward(from: 0);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await CoupleService.instance.sendMessage(
+        widget.couple.coupleId,
+        '♥ Ich denk an dich',
+      );
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('${widget.couple.partnerLabel} weiss es jetzt.'),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Nicht gesendet: $e')));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.couple.partnerUid == null) return const SizedBox.shrink();
+    // Zwei kurze Schläge: gross – klein – gross – normal.
+    final scale = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1, end: 1.35), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 1.35, end: 1), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 1, end: 1.25), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 1.25, end: 1), weight: 1),
+    ]).animate(_beat);
+
+    return OutlinedButton(
+      onPressed: _send,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(52),
+        side: const BorderSide(color: Kitsune.lantern, width: 1.5),
+        foregroundColor: Kitsune.paper,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ScaleTransition(
+            scale: scale,
+            child: const Icon(
+              Icons.favorite_rounded,
+              color: Kitsune.lantern,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            'Ich denk an dich',
+            style: AppTheme.serif(size: 16, color: Kitsune.paper),
+          ),
+        ],
+      ),
     );
   }
 }

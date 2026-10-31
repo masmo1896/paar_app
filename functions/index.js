@@ -1,6 +1,7 @@
 // Cloud-Funktionen: schicken Push-Benachrichtigungen an die andere Person.
 // Sie laufen bei Google (nicht auf dem Handy) und reagieren auf Änderungen in Firestore.
 const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
@@ -120,5 +121,46 @@ exports.onEvent = onDocumentCreated(
       body: `${shorten(e.title)} · ${Number(d)}.${Number(m)}.`,
       type: 'event',
     });
+  },
+);
+
+// Jahrestag-Erinnerung: jeden Morgen um 8 Uhr (Schweizer Zeit) alle jährlichen
+// Countdowns prüfen und eine Woche vorher, am Vortag und am Tag selbst erinnern.
+// Wer auf der Wir-Seite "Jahrestag-Erinnerung" ausschaltet, bekommt nichts.
+exports.anniversaryReminder = onSchedule(
+  { schedule: 'every day 08:00', timeZone: 'Europe/Zurich', region: REGION },
+  async () => {
+    // Heutiges Datum in Zürich als "2026-10-31".
+    const todayKey = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Zurich' });
+    const [ty, tm, td] = todayKey.split('-').map(Number);
+    const today = Date.UTC(ty, tm - 1, td);
+
+    // Ohne Filter in der Abfrage (sonst bräuchte es einen extra Index) – es sind nur wenige.
+    const snap = await db.collectionGroup('countdowns').get();
+    for (const doc of snap.docs) {
+      const c = doc.data();
+      if (c.yearly !== true || typeof c.date !== 'string') continue;
+      const [y, m, d] = c.date.split('-').map(Number);
+      let next = Date.UTC(ty, m - 1, d);
+      if (next < today) next = Date.UTC(ty + 1, m - 1, d);
+      const daysLeft = Math.round((next - today) / 86400000);
+      if (![0, 1, 7].includes(daysLeft)) continue;
+
+      const years = new Date(next).getUTCFullYear() - y;
+      const title = shorten(c.title, 60);
+      const body = {
+        0: years > 0 ? `Heute: ${title} – ${years} Jahre ♥` : `Heute: ${title} ♥`,
+        1: `Morgen: ${title}`,
+        7: `In einer Woche: ${title}`,
+      }[daysLeft];
+
+      const coupleRef = doc.ref.parent.parent;
+      const couple = await coupleRef.get();
+      for (const uid of couple.get('members') || []) {
+        const me = await db.collection('users').doc(uid).get();
+        if (me.get('anniversaryReminder') === false) continue;
+        await notify(uid, { title: `${c.emoji || '♥'} Jahrestag`, body, type: 'chat' });
+      }
+    }
   },
 );

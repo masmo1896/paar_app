@@ -8,7 +8,6 @@ import '../screens/chat_media_screen.dart';
 import '../services/couple_service.dart';
 import '../services/push_service.dart';
 import '../theme.dart';
-import 'fox_bubble.dart';
 import 'who.dart';
 import '../utils/shared_stream.dart';
 
@@ -131,8 +130,8 @@ class PartnerPhoto extends StatelessWidget {
   }
 }
 
-/// "schreibt…"-Blase unten im Chat, solange die andere Person tippt: eine kleine
-/// Papier-Sprechblase mit Fuchsohren und drei hüpfenden Punkten.
+/// "schreibt…" unten im Chat, solange die andere Person tippt: drei kleine
+/// helle Punkte, die sanft nacheinander aufleuchten und sich leicht heben.
 /// Ein Tipp-Signal gilt 8 Sekunden; ein Timer prüft das regelmässig nach,
 /// damit die Blase auch verschwindet, wenn kein "fertig"-Signal mehr kommt.
 class TypingBubble extends StatefulWidget {
@@ -211,35 +210,15 @@ class _TypingBubbleState extends State<TypingBubble> {
       alignment: Alignment.bottomLeft,
       child: !typing
           ? const SizedBox(width: double.infinity)
+          // Ganz dezent: nur drei helle Punkte, kein Text, keine Blase.
           : Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+              padding: const EdgeInsets.fromLTRB(22, 2, 12, 10),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Semantics(
                   liveRegion: true,
                   label: 'schreibt gerade',
-                  child: FoxBubble(
-                    color: Kitsune.paper,
-                    isMine: false,
-                    child: const Padding(
-                      padding: EdgeInsets.fromLTRB(14, 9, 14, 9),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          RepaintBoundary(child: _BouncingDots()),
-                          SizedBox(width: 8),
-                          Text(
-                            'schreibt…',
-                            style: TextStyle(
-                              color: Kitsune.inkSoft,
-                              fontSize: 14,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  child: const RepaintBoundary(child: _BouncingDots()),
                 ),
               ),
             ),
@@ -247,7 +226,7 @@ class _TypingBubbleState extends State<TypingBubble> {
   }
 }
 
-/// Drei Punkte, die nacheinander hüpfen (rot, wie die Laternen).
+/// Drei helle Punkte: einer nach dem anderen wird heller und hebt sich ein wenig.
 class _BouncingDots extends StatefulWidget {
   const _BouncingDots();
 
@@ -259,7 +238,7 @@ class _BouncingDotsState extends State<_BouncingDots>
     with SingleTickerProviderStateMixin {
   late final _anim = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1100),
+    duration: const Duration(milliseconds: 1200),
   )..repeat();
 
   @override
@@ -276,26 +255,30 @@ class _BouncingDotsState extends State<_BouncingDots>
         mainAxisSize: MainAxisSize.min,
         children: [
           for (var i = 0; i < 3; i++) ...[
-            if (i > 0) const SizedBox(width: 4),
-            Transform.translate(
-              // Jeder Punkt startet etwas später; hüpft im ersten Drittel hoch und runter.
-              offset: Offset(0, -4 * _hop((_anim.value - i * 0.15) % 1.0)),
-              child: Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  color: i == 1 ? Kitsune.plum : Kitsune.lantern,
-                  shape: BoxShape.circle,
-                ),
-              ),
+            if (i > 0) const SizedBox(width: 5),
+            Builder(
+              builder: (context) {
+                // Weiche Welle: jeder Punkt etwas später (0 = ruhig, 1 = oben/hell).
+                final t = (_anim.value - i * 0.18) % 1.0;
+                final wave = t < 0.5 ? math.sin(t / 0.5 * math.pi) : 0.0;
+                return Transform.translate(
+                  offset: Offset(0, -3 * wave),
+                  child: Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: Kitsune.paper.withValues(alpha: 0.35 + 0.5 * wave),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ],
       ),
     );
   }
-
-  static double _hop(double t) => t < 0.35 ? math.sin(t / 0.35 * math.pi) : 0.0;
 }
 
 /// Runder, dunkler Hintergrund für die Knöpfe in der Chat-Kopfzeile – genau so

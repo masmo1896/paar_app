@@ -67,6 +67,7 @@ const preview = (m) => ({
   gif: 'GIF',
   audio: '🎤 Sprachnachricht',
   video: '🎥 Videonachricht',
+  file: `📎 ${m.fileName || 'Datei'}`,
 }[m.type || 'text'] ?? 'Neue Nachricht');
 
 // Neue Chat-Nachricht

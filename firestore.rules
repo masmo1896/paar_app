@@ -202,7 +202,8 @@ service cloud.firestore {
 
       match /messages/{messageId} {
         allow read: if isMember(coupleId);
-        // Text (bis 5000 Zeichen), Foto, GIF (GIPHY oder Storage), Sprach- oder Videonachricht.
+        // Text (bis 5000 Zeichen), Foto, GIF (GIPHY oder Storage), Sprach- oder
+        // Videonachricht oder Datei.
         allow create: if isMember(coupleId) &&
           request.resource.data.senderId == request.auth.uid &&
           (
@@ -222,7 +223,14 @@ service cloud.firestore {
             (request.resource.data.type == 'video' &&
               request.resource.data.videoUrl is string &&
               request.resource.data.videoUrl.matches('https://firebasestorage[.]googleapis[.]com/.*') &&
-              request.resource.data.durationMs is int)
+              request.resource.data.durationMs is int) ||
+            (request.resource.data.type == 'file' &&
+              request.resource.data.fileUrl is string &&
+              request.resource.data.fileUrl.matches('https://firebasestorage[.]googleapis[.]com/.*') &&
+              request.resource.data.fileName is string &&
+              request.resource.data.fileName.size() > 0 &&
+              request.resource.data.fileName.size() <= 200 &&
+              request.resource.data.fileSize is int)
           );
         allow update: if isMember(coupleId) && (
           // Lesebestätigung: nur die Empfängerin darf "gelesen" setzen, sonst ändert sich nichts.

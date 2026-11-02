@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
@@ -10,6 +13,7 @@ import '../theme.dart';
 import '../utils/dates.dart';
 import 'camera_page.dart';
 import 'search_screen.dart';
+import '../widgets/file_bubble.dart';
 import '../widgets/gif_picker.dart';
 import '../widgets/fox_bubble.dart';
 import '../widgets/partner_header.dart';
@@ -408,7 +412,33 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         await _recordSelfie();
       case _Attachment.gif:
         await _sendGif();
+      case _Attachment.file:
+        await _sendFile();
     }
+  }
+
+  /// Datei auswählen (Dokumente, PDFs, Tickets …) und senden – höchstens 25 MB.
+  Future<void> _sendFile() async {
+    final file = await FilePicker.pickFile();
+    final path = file?.path;
+    if (file == null || path == null || !mounted) return;
+    final size = await File(path).length();
+    if (!mounted) return;
+    if (size > 25 * 1024 * 1024) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Die Datei ist grösser als 25 MB.')),
+      );
+      return;
+    }
+    await _upload(
+      () => CoupleService.instance.sendFile(
+        widget.coupleId,
+        path: path,
+        name: file.name,
+        size: size,
+      ),
+      'Datei konnte nicht gesendet werden',
+    );
   }
 
   // GIF-Fenster öffnen: GIPHY-GIF direkt senden, Galerie-GIF erst hochladen.
@@ -493,6 +523,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       },
       isGif: data['type'] == 'gif',
       audioUrl: data['type'] == 'audio' ? data['audioUrl'] as String? : null,
+      file: data['type'] == 'file'
+          ? (
+              url: data['fileUrl'] as String,
+              name: data['fileName'] as String? ?? 'Datei',
+              size: (data['fileSize'] as num?)?.toInt() ?? 0,
+            )
+          : null,
       waveform: (data['waveform'] as List?)
           ?.map((v) => (v as num).toDouble())
           .toList(),
@@ -851,6 +888,7 @@ class _Bubble extends StatelessWidget {
     required this.imageUrl,
     required this.isGif,
     required this.audioUrl,
+    this.file,
     this.waveform,
     required this.videoUrl,
     required this.mediaDuration,
@@ -877,6 +915,7 @@ class _Bubble extends StatelessWidget {
   final String? imageUrl; // gesetzt = Foto- oder GIF-Nachricht
   final bool isGif;
   final String? audioUrl; // gesetzt = Sprachnachricht
+  final ({String url, String name, int size})? file; // gesetzt = Datei
   final List<double>? waveform; // Lautstärke-Balken der Sprachnachricht
   final String? videoUrl; // gesetzt = Selfie-Videobotschaft
   final Duration mediaDuration; // Länge von Sprach- bzw. Videonachricht
@@ -965,6 +1004,8 @@ class _Bubble extends StatelessWidget {
             )
           else if (videoUrl case final url?)
             VideoBubble(url: url, duration: mediaDuration)
+          else if (file case final f?)
+            FileBubble(url: f.url, name: f.name, size: f.size, color: fg)
           else if (deleted)
             Text(
               '🚫 Nachricht gelöscht',
@@ -1548,7 +1589,7 @@ class _InputBar extends StatelessWidget {
   }
 }
 
-enum _Attachment { gallery, camera, video, gif }
+enum _Attachment { gallery, camera, video, gif, file }
 
 /// Schlichtes Popup über dem "+": helle Papierkarte mit vier Zeilen.
 /// Geht aus der Ecke beim Knopf auf; Tippen daneben schliesst es.
@@ -1586,6 +1627,7 @@ class _AttachPopup extends StatelessWidget {
     (_Attachment.camera, Icons.photo_camera_outlined, 'Kamera'),
     (_Attachment.video, Icons.videocam_outlined, 'Video'),
     (_Attachment.gif, Icons.gif_box_outlined, 'GIF'),
+    (_Attachment.file, Icons.attach_file_rounded, 'Datei'),
   ];
 
   @override

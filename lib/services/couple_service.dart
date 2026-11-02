@@ -41,12 +41,13 @@ class ReplyTo {
 //   users/{uid}                    -> { email, name, coupleId, photoUrl? }
 //   couples/{coupleId}             -> { members: [uid, uid], inviteCode }
 //   invites/{code}                 -> { coupleId }
-//   couples/{coupleId}/messages/*  -> { type: 'text'|'image'|'gif'|'audio'|'video'|'deleted',
+//   couples/{coupleId}/messages/*  -> { type: 'text'|'image'|'gif'|'audio'|'video'|'file'|'deleted',
 //                                       editedAt? (Text wurde bearbeitet),
-//                                       text | imageUrl | gifUrl | audioUrl/videoUrl + durationMs (+ waveform),
+//                                       text | imageUrl | gifUrl | audioUrl/videoUrl + durationMs (+ waveform)
+//                                       | fileUrl + fileName + fileSize,
 //                                       senderId, createdAt, read, readAt,
 //                                       reactions: { uid: emoji }, replyTo? }
-// Dateien liegen in Firebase Storage unter couples/{coupleId}/images/, audio/ bzw. videos/.
+// Dateien liegen in Firebase Storage unter couples/{coupleId}/images/, audio/, videos/ bzw. files/.
 class CoupleService {
   CoupleService._();
   static final instance = CoupleService._();
@@ -360,6 +361,33 @@ class CoupleService {
     return true;
   }
 
+  /// Lädt eine Datei (PDF, Word, Ticket …) hoch und schickt sie als Nachricht.
+  /// Jede Datei bekommt einen eigenen Ordner, damit der Originalname bleibt.
+  Future<void> sendFile(
+    String coupleId, {
+    required String path,
+    required String name,
+    required int size,
+  }) async {
+    final folder = '${DateTime.now().millisecondsSinceEpoch}_$_uid';
+    final ref = FirebaseStorage.instance.ref(
+      'couples/$coupleId/files/$folder/$name',
+    );
+    await ref.putFile(
+      File(path),
+      SettableMetadata(contentType: mimeTypeFor(name)),
+    );
+    await messages(coupleId).add({
+      'type': 'file',
+      'fileUrl': await ref.getDownloadURL(),
+      'fileName': name,
+      'fileSize': size,
+      'senderId': _uid,
+      'createdAt': FieldValue.serverTimestamp(),
+      'read': false,
+    });
+  }
+
   /// Lädt eine Selfie-Videobotschaft hoch und schickt sie als Nachricht.
   Future<void> sendVideo(
     String coupleId,
@@ -428,6 +456,7 @@ class CoupleService {
     'gif' => 'GIF',
     'audio' => '🎤 Sprachnachricht',
     'video' => '🎥 Videobotschaft',
+    'file' => '📎 ${data['fileName'] ?? 'Datei'}',
     'deleted' => 'Gelöschte Nachricht',
     _ => data['text'] as String? ?? '',
   };
@@ -438,4 +467,32 @@ class CoupleService {
     final rnd = Random.secure();
     return List.generate(6, (_) => chars[rnd.nextInt(chars.length)]).join();
   }
+}
+
+/// Dateityp anhand der Endung (für Speicher und zum Öffnen).
+String mimeTypeFor(String name) {
+  final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+  return const {
+        'pdf': 'application/pdf',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx':
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'ppt': 'application/vnd.ms-powerpoint',
+        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'txt': 'text/plain',
+        'csv': 'text/csv',
+        'zip': 'application/zip',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'heic': 'image/heic',
+        'mp3': 'audio/mpeg',
+        'm4a': 'audio/mp4',
+        'mp4': 'video/mp4',
+        'mov': 'video/quicktime',
+        'pkpass': 'application/vnd.apple.pkpass',
+      }[ext] ??
+      'application/octet-stream';
 }

@@ -166,6 +166,27 @@ exports.onEventChanged = onDocumentUpdated(
   },
 );
 
+// Neue Laterne im Laternenhimmel ("Ich denk an dich"). Hat die andere Person in
+// den letzten 5 Minuten selbst eine geschickt, ist es ein Gleichzeitig-Moment.
+exports.onLantern = onDocumentCreated(
+  { document: 'couples/{coupleId}/lanterns/{id}', region: REGION },
+  async (event) => {
+    const l = event.data.data();
+    const to = await partnerOf(event.params.coupleId, l.from);
+    if (!to) return;
+    const name = await nameOf(l.from, to);
+    // Ohne Filter in der Abfrage (sonst bräuchte es einen extra Index).
+    const recent = await event.data.ref.parent
+      .orderBy('createdAt', 'desc').limit(20).get();
+    const now = l.createdAt.toMillis();
+    const sync = recent.docs.some((d) => d.get('from') === to &&
+      Math.abs(now - d.get('createdAt').toMillis()) <= 5 * 60 * 1000);
+    await notify(to, sync
+      ? { title: '✨ Gleichzeitig!', body: `${name} und du habt im selben Moment aneinander gedacht.`, type: 'lantern' }
+      : { title: `🏮 ${name} denkt an dich`, body: 'Eine Laterne ist für dich aufgestiegen.', type: 'lantern' });
+  },
+);
+
 // Jahrestag-Erinnerung: jeden Morgen um 8 Uhr (Schweizer Zeit) alle jährlichen
 // Countdowns prüfen und eine Woche vorher, am Vortag und am Tag selbst erinnern.
 // Wer auf der Wir-Seite "Jahrestag-Erinnerung" ausschaltet, bekommt nichts.

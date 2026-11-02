@@ -118,6 +118,16 @@ service cloud.firestore {
           request.resource.data.createdBy == resource.data.createdBy;
       }
 
+      // Laternenhimmel ("Ich denk an dich"): beide lesen, jede Person schickt nur
+      // eigene Laternen. Laternen bleiben für immer – kein Ändern oder Löschen.
+      match /lanterns/{lanternId} {
+        allow read: if isMember(coupleId);
+        allow create: if isMember(coupleId) &&
+          request.resource.data.keys().hasOnly(['from', 'createdAt']) &&
+          request.resource.data.from == request.auth.uid &&
+          request.resource.data.createdAt == request.time;
+      }
+
       // "schreibt…"-Anzeige: lesen beide, schreiben nur das eigene Dokument.
       match /typing/{uid} {
         allow read: if isMember(coupleId);

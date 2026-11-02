@@ -84,7 +84,7 @@ class _HomeShellState extends State<HomeShell> {
       body: IndexedStack(
         index: _tab,
         children: [
-          HomeScreen(couple: couple, onOpenTab: _open),
+          HomeScreen(couple: couple, onOpenTab: _open, active: _tab == 0),
           ChatScreen(
             coupleId: widget.coupleId,
             active: _tab == 1,

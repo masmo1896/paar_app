@@ -8,15 +8,25 @@ import '../services/couple_service.dart';
 import '../services/planner_service.dart';
 import '../theme.dart';
 import '../utils/dates.dart';
+import '../widgets/lantern_sky.dart';
 import '../widgets/who.dart';
 import 'countdown_screen.dart';
 
 /// Startseite wie im Kitsune-Mockup: Begrüssung unter Laternen, nächster Countdown
-/// als Ticket, die Termine von heute, die nächsten To-dos und die letzte Nachricht.
+/// als Ticket, euer Laternenhimmel, die Termine von heute, die nächsten To-dos
+/// und die letzte Nachricht.
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key, required this.couple, required this.onOpenTab});
+  const HomeScreen({
+    super.key,
+    required this.couple,
+    required this.onOpenTab,
+    this.active = true,
+  });
 
   final Couple couple;
+
+  /// Ist die Home-Seite gerade zu sehen? (Für den Fuchs-Boten im Laternenhimmel.)
+  final bool active;
 
   /// Wechselt den Tab unten (1 = Chat, 2 = Kalender, 3 = To-dos).
   final ValueChanged<int> onOpenTab;
@@ -35,13 +45,13 @@ class HomeScreen extends StatelessWidget {
               children: [
                 _NextCountdown(couple: couple),
                 const SizedBox(height: 16),
+                LanternSky(couple: couple, active: active),
+                const SizedBox(height: 16),
                 _Today(couple: couple, onOpenCalendar: () => onOpenTab(2)),
                 const SizedBox(height: 14),
                 _TodoSummary(couple: couple, onOpen: () => onOpenTab(3)),
                 const SizedBox(height: 14),
                 _LastMessage(couple: couple, onOpen: () => onOpenTab(1)),
-                const SizedBox(height: 14),
-                _ThinkingOfYou(couple: couple),
               ],
             ),
           ),
@@ -632,100 +642,6 @@ class _LastMessage extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-/// Ein Tipp schickt "Ich denk an dich" in den Chat – mit kleinem Herzschlag.
-class _ThinkingOfYou extends StatefulWidget {
-  const _ThinkingOfYou({required this.couple});
-
-  final Couple couple;
-
-  @override
-  State<_ThinkingOfYou> createState() => _ThinkingOfYouState();
-}
-
-class _ThinkingOfYouState extends State<_ThinkingOfYou>
-    with SingleTickerProviderStateMixin {
-  late final _beat = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 520),
-  );
-  bool _sending = false;
-
-  @override
-  void dispose() {
-    _beat.dispose();
-    super.dispose();
-  }
-
-  Future<void> _send() async {
-    if (_sending) return;
-    setState(() => _sending = true);
-    _beat.forward(from: 0);
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await CoupleService.instance.sendMessage(
-        widget.couple.coupleId,
-        '♥ Ich denk an dich',
-      );
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('${widget.couple.partnerLabel} weiss es jetzt.'),
-        ),
-      );
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Nicht gesendet: $e')));
-    } finally {
-      if (mounted) setState(() => _sending = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.couple.partnerUid == null) return const SizedBox.shrink();
-    // Zwei kurze Schläge: gross – klein – gross – normal.
-    final scale = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 1, end: 1.35), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 1.35, end: 1), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 1, end: 1.25), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 1.25, end: 1), weight: 1),
-    ]).animate(_beat);
-
-    // Nur ein Herz: rote Laterne mit cremefarbenem Rand, schlägt beim Antippen.
-    return Center(
-      child: Tooltip(
-        message: 'Ich denk an dich',
-        child: Semantics(
-          button: true,
-          label: 'Ich denk an dich senden',
-          child: Material(
-            color: Kitsune.lantern,
-            shape: const CircleBorder(
-              side: BorderSide(color: Kitsune.paper, width: 2),
-            ),
-            elevation: 6,
-            shadowColor: Colors.black54,
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: _send,
-              child: SizedBox(
-                width: 68,
-                height: 68,
-                child: ScaleTransition(
-                  scale: scale,
-                  child: const Icon(
-                    Icons.favorite_rounded,
-                    color: Kitsune.paper,
-                    size: 32,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

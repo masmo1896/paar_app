@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../services/couple_service.dart';
 import '../services/push_service.dart';
 import '../theme.dart';
+import '../widgets/motion.dart';
 import '../widgets/who.dart';
 import 'calendar_screen.dart';
 import 'chat_screen.dart';
@@ -25,7 +27,7 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _tab = 0;
   int _previousTab = 0; // Home
   final _myUid = FirebaseAuth.instance.currentUser!.uid;
@@ -37,14 +39,29 @@ class _HomeShellState extends State<HomeShell> {
     final push = PushService.instance;
     push.startIfEnabled();
     push.requestedTab.addListener(_openRequestedTab);
+    WidgetsBinding.instance.addObserver(this);
     // Ist die App offen, zeigen wir bewusst keinen eigenen Hinweis – Benachrichtigungen
     // erscheinen nur als normale System-Mitteilung, wenn die App im Hintergrund ist.
     // Falls die App durch eine Benachrichtigung gestartet wurde, noch bevor wir lauschten.
     WidgetsBinding.instance.addPostFrameCallback((_) => _openRequestedTab());
   }
 
+  // Akku: Im Hintergrund die Live-Verbindung zur Datenbank trennen. Sonst hält
+  // die App die ganze Nacht Verbindungen offen. Benachrichtigungen kommen
+  // trotzdem (die laufen über Google, nicht über diese Verbindung).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final db = FirebaseFirestore.instance;
+    if (state == AppLifecycleState.paused) {
+      db.disableNetwork();
+    } else if (state == AppLifecycleState.resumed) {
+      db.enableNetwork();
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     PushService.instance.requestedTab.removeListener(_openRequestedTab);
     super.dispose();
   }
@@ -84,15 +101,25 @@ class _HomeShellState extends State<HomeShell> {
       body: IndexedStack(
         index: _tab,
         children: [
-          HomeScreen(couple: couple, onOpenTab: _open, active: _tab == 0),
-          ChatScreen(
-            coupleId: widget.coupleId,
-            active: _tab == 1,
-            onBack: () => _open(_previousTab),
-          ),
-          CalendarScreen(couple: couple),
-          TodoScreen(couple: couple),
-          UsScreen(couple: couple),
+          for (final (i, page) in [
+            HomeScreen(couple: couple, onOpenTab: _open, active: _tab == 0),
+            ChatScreen(
+              coupleId: widget.coupleId,
+              active: _tab == 1,
+              onBack: () => _open(_previousTab),
+            ),
+            CalendarScreen(couple: couple),
+            TodoScreen(couple: couple),
+            UsScreen(couple: couple),
+          ].indexed)
+            // Versteckte Bereiche: Animationen anhalten (spart Akku und
+            // verhindert Ruckeln) und in eigener Ebene halten.
+            TickerMode(
+              enabled: i == _tab,
+              child: RepaintBoundary(
+                child: _TabFade(active: i == _tab, child: page),
+              ),
+            ),
         ],
       ),
       bottomNavigationBar: _KitsuneNav(selected: _tab, onSelect: _open),
@@ -167,15 +194,28 @@ class _KitsuneNav extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const SizedBox(height: 4),
-                        SvgPicture.string(
-                          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
-                          'fill="none" stroke="#000" stroke-width="1.8">'
-                          '${_items[i].$2}</svg>',
-                          width: 22,
-                          height: 22,
-                          colorFilter: ColorFilter.mode(
-                            i == selected ? Kitsune.paper : Kitsune.dim,
-                            BlendMode.srcIn,
+                        // Aktives Symbol hebt sich sanft an und wird etwas grösser.
+                        AnimatedSlide(
+                          offset: i == selected
+                              ? const Offset(0, -0.12)
+                              : Offset.zero,
+                          duration: const Duration(milliseconds: 220),
+                          curve: motionCurve,
+                          child: AnimatedScale(
+                            scale: i == selected ? 1.1 : 1,
+                            duration: const Duration(milliseconds: 220),
+                            curve: motionCurve,
+                            child: SvgPicture.string(
+                              '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
+                              'fill="none" stroke="#000" stroke-width="1.8">'
+                              '${_items[i].$2}</svg>',
+                              width: 22,
+                              height: 22,
+                              colorFilter: ColorFilter.mode(
+                                i == selected ? Kitsune.paper : Kitsune.dim,
+                                BlendMode.srcIn,
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 3),
@@ -208,4 +248,44 @@ class _KitsuneNav extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Beim Wechsel zu einem Tab: sanft einblenden (220 ms).
+class _TabFade extends StatefulWidget {
+  const _TabFade({required this.active, required this.child});
+
+  final bool active;
+  final Widget child;
+
+  @override
+  State<_TabFade> createState() => _TabFadeState();
+}
+
+class _TabFadeState extends State<_TabFade>
+    with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+    value: 1,
+  );
+
+  @override
+  void didUpdateWidget(_TabFade old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active && !reduceMotion(context)) {
+      _c.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+    opacity: CurvedAnimation(parent: _c, curve: motionCurve),
+    child: widget.child,
+  );
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import '../utils/dates.dart';
+import '../widgets/motion.dart';
 
 /// Nachtblaue Karte für einen Bereich der "Wir"-Seite: Stempel, Titel, Inhalt.
 class UsCard extends StatelessWidget {
@@ -98,8 +99,9 @@ class TogetherCounter extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: Column(
             children: [
-              Text(
-                '$totalDays',
+              CountUp(
+                value: totalDays,
+                duration: const Duration(milliseconds: 1100),
                 style: AppTheme.serif(size: 46, color: Kitsune.paper).copyWith(
                   height: 1,
                   shadows: const [

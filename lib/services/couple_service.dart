@@ -7,6 +7,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../utils/shared_stream.dart';
+
 /// Worauf eine Nachricht antwortet: ID, Absender und ein kurzer Vorschautext.
 class ReplyTo {
   const ReplyTo({
@@ -54,7 +56,14 @@ class CoupleService {
 
   /// Profil der Partnerin/des Partners (Name, Profilbild) – null, solange niemand beigetreten ist.
   /// Hast du einen Spitznamen festgelegt (Wir-Seite), steht dieser unter 'name'.
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
   Stream<Map<String, dynamic>?> partnerStream(String coupleId) =>
+      SharedStreams.get(
+        'partner/$_uid/$coupleId',
+        () => _partnerStreamLive(coupleId),
+      );
+
+  Stream<Map<String, dynamic>?> _partnerStreamLive(String coupleId) =>
       _withNickname(_partnerProfile(coupleId));
 
   /// Eigener Name für deinen Schatz – nur du siehst ihn. Leer = ihr eigener Name.
@@ -136,7 +145,14 @@ class CoupleService {
   ).set({'at': typing ? FieldValue.serverTimestamp() : null});
 
   /// Zeitpunkt, zu dem die andere Person zuletzt getippt hat (null = tippt nicht).
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
   Stream<DateTime?> typingSince(String coupleId, String partnerUid) =>
+      SharedStreams.get(
+        'typing/$coupleId/$partnerUid',
+        () => _typingSinceLive(coupleId, partnerUid),
+      );
+
+  Stream<DateTime?> _typingSinceLive(String coupleId, String partnerUid) =>
       _typingRef(
         coupleId,
         partnerUid,
@@ -172,11 +188,19 @@ class CoupleService {
   }
 
   /// Eigenes Profil (für das ⋮-Menü: aktueller Name).
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
   Stream<Map<String, dynamic>?> myProfileStream() =>
+      SharedStreams.get('me/$_uid', () => _myProfileStreamLive());
+
+  Stream<Map<String, dynamic>?> _myProfileStreamLive() =>
       _db.collection('users').doc(_uid).snapshots().map((d) => d.data());
 
   /// Liefert laufend die coupleId des Nutzers (oder null, solange nicht verbunden).
-  Stream<String?> coupleIdStream(String uid) => _db
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
+  Stream<String?> coupleIdStream(String uid) =>
+      SharedStreams.get('coupleId/$uid', () => _coupleIdStreamLive(uid));
+
+  Stream<String?> _coupleIdStreamLive(String uid) => _db
       .collection('users')
       .doc(uid)
       .snapshots()

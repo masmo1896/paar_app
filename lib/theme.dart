@@ -1,7 +1,12 @@
+import 'dart:ui' as ui;
+
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import 'widgets/motion.dart';
 
 // Design "Kitsune Moon": Nachtblau mit Seigaiha-Wellenmuster, cremefarbene Papierkarten
 // mit feinem Innenrahmen, Laternen-Rot als Akzent, Aqua für kleine Beschriftungen.
@@ -78,9 +83,11 @@ class AppTheme {
     outline: Kitsune.hairline,
   );
 
-  static ThemeData get light => _build(_night);
-  static ThemeData get dark => _build(_night);
-  static ThemeData get paper => _build(_paper);
+  // Nur EINMAL berechnen: jede Papierkarte fragt nach AppTheme.paper –
+  // früher wurde das Theme dabei jedes Mal komplett neu gebaut.
+  static final light = _build(_night);
+  static final dark = light;
+  static final paper = _build(_paper);
 
   /// Überschriften-Schrift (Shippori Mincho) für Titel und grosse Zahlen.
   static TextStyle serif({
@@ -121,6 +128,13 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
+      // Weiche Seitenübergänge (Android); iPhone behält das gewohnte Wischen.
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: SoftPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        },
+      ),
       textTheme: textTheme,
       // Das Wellenmuster wird hinter allen Bildschirmen gemalt (siehe AppBackground).
       scaffoldBackgroundColor: onPaper ? scheme.surface : Colors.transparent,
@@ -331,33 +345,88 @@ class Paper extends StatelessWidget {
 }
 
 /// Nachtblau mit feinem Seigaiha-Wellenmuster hinter der ganzen App.
-class AppBackground extends StatelessWidget {
+///
+/// Schnell: Das Muster wird nur EINMAL als kleine Kachel gemalt und dann als
+/// Bild wiederholt (ein Zeichenschritt statt tausender Kreise). Es liegt in
+/// einer eigenen Ebene (RepaintBoundary), damit Animationen darüber es nicht
+/// jedes Mal neu malen.
+class AppBackground extends StatefulWidget {
   const AppBackground({super.key, required this.child});
 
   final Widget? child;
 
   @override
-  Widget build(BuildContext context) =>
-      CustomPaint(painter: const _SeigaihaPainter(), child: child);
+  State<AppBackground> createState() => _AppBackgroundState();
 }
 
-class _SeigaihaPainter extends CustomPainter {
-  const _SeigaihaPainter();
+class _AppBackgroundState extends State<AppBackground> {
+  ui.Image? _tile;
+  double? _tileRatio;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = Kitsune.night);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ratio = MediaQuery.devicePixelRatioOf(context);
+    if (ratio != _tileRatio) {
+      _tileRatio = ratio;
+      _makeTile(ratio);
+    }
+  }
+
+  Future<void> _makeTile(double ratio) async {
+    final tile = await _SeigaihaTile.render(ratio);
+    if (!mounted) return tile.dispose();
+    setState(() {
+      _tile?.dispose();
+      _tile = tile;
+    });
+  }
+
+  @override
+  void dispose() {
+    _tile?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: [
+      RepaintBoundary(
+        child: CustomPaint(painter: _SeigaihaPainter(_tile, _tileRatio ?? 1)),
+      ),
+      ?widget.child,
+    ],
+  );
+}
+
+/// Eine Kachel des Musters (40 × 20 Punkte), die sich nahtlos wiederholt.
+abstract final class _SeigaihaTile {
+  static const w = 40.0, h = 20.0;
+
+  static Future<ui.Image> render(double ratio) {
+    // Ganze Pixel, sonst entstehen feine Nähte zwischen den Kacheln.
+    final pxW = (w * ratio).round(), pxH = (h * ratio).round();
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder)
+      ..scale(pxW / w, pxH / h)
+      // Aus der Mitte eines grösseren Musters ausschneiden: dort ist es
+      // vollständig und wiederholt sich exakt alle 40 × 20 Punkte.
+      ..translate(-2 * w, -2 * h);
+    canvas.drawRect(
+      const Rect.fromLTWH(0, 0, 6 * w, 6 * h),
+      Paint()..color = Kitsune.night,
+    );
     final line = Paint()
       ..color = Kitsune.aqua.withValues(alpha: 0.07)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
     final cover = Paint()..color = Kitsune.night;
     // Reihe für Reihe von oben nach unten: jede Welle überdeckt die obere Hälfte der vorigen.
-    const w = 40.0, h = 20.0;
     var row = 0;
-    for (var y = 0.0; y < size.height + h; y += h / 2, row++) {
+    for (var y = 0.0; y < 6 * h; y += h / 2, row++) {
       final shift = row.isOdd ? w / 2 : 0.0;
-      for (var x = -w + shift; x < size.width + w; x += w) {
+      for (var x = -w + shift; x < 6 * w; x += w) {
         final c = Offset(x + w / 2, y);
         canvas.drawCircle(c, 20, cover);
         for (final r in [5.5, 10.5, 15.5]) {
@@ -365,10 +434,45 @@ class _SeigaihaPainter extends CustomPainter {
         }
       }
     }
+    return recorder.endRecording().toImage(pxW, pxH);
+  }
+}
+
+class _SeigaihaPainter extends CustomPainter {
+  const _SeigaihaPainter(this.tile, this.ratio);
+
+  final ui.Image? tile;
+  final double ratio;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final tile = this.tile;
+    if (tile == null) {
+      canvas.drawRect(rect, Paint()..color = Kitsune.night);
+      return;
+    }
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = ImageShader(
+          tile,
+          TileMode.repeated,
+          TileMode.repeated,
+          // Kachel-Pixel zurück auf 40 × 20 Punkte.
+          Matrix4.diagonal3Values(
+            _SeigaihaTile.w / tile.width,
+            _SeigaihaTile.h / tile.height,
+            1,
+          ).storage,
+        )
+        ..filterQuality = FilterQuality.low,
+    );
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(_SeigaihaPainter old) =>
+      old.tile != tile || old.ratio != ratio;
 }
 
 /// Bilder für die Kopfzeilen.

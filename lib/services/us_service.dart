@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../utils/dates.dart';
 
+import '../utils/shared_stream.dart';
+
 // Datenmodell in Firestore (alles für die "Wir"-Seite):
 //   couples/{coupleId}/days/{2026-11-02}             -> { question, answered: [uid, …] }
 //   couples/{coupleId}/days/{tag}/answers/{uid}       -> { text, at }
@@ -12,7 +14,6 @@ import '../utils/dates.dart';
 //   couples/{coupleId}/letters/{id}/content/text      -> { text }
 //       Den Text gibt der Server erst ab openAt heraus (Absender: immer).
 //   couples/{coupleId}/dateIdeas/{id}                 -> { text, createdBy, createdAt }
-//   users/{uid}/giftIdeas/{id}                        -> { text, done, createdAt } (nur für mich)
 
 class DayQuestion {
   const DayQuestion({required this.question, required this.answered});
@@ -61,11 +62,10 @@ class Letter {
 }
 
 class Idea {
-  const Idea({required this.id, required this.text, this.done = false});
+  const Idea({required this.id, required this.text});
 
   final String id;
   final String text;
-  final bool done;
 }
 
 class UsService {
@@ -83,7 +83,11 @@ class UsService {
   DocumentReference<Map<String, dynamic>> _day(String coupleId, String day) =>
       _couple(coupleId).collection('days').doc(day);
 
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
   Stream<DayQuestion?> day(String coupleId, String day) =>
+      SharedStreams.get('day/$coupleId/$day', () => _dayLive(coupleId, day));
+
+  Stream<DayQuestion?> _dayLive(String coupleId, String day) =>
       _day(coupleId, day).snapshots().map((d) {
         final m = d.data();
         if (m == null) return null;
@@ -95,7 +99,14 @@ class UsService {
 
   /// Antwort von [uid]. Die des Schatzes liefert der Server erst, wenn ich
   /// selbst geantwortet habe – vorher kommt null (statt eines Fehlers).
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
   Stream<Answer?> answer(String coupleId, String day, String uid) =>
+      SharedStreams.get(
+        'answer/$coupleId/$day/$uid',
+        () => _answerLive(coupleId, day, uid),
+      );
+
+  Stream<Answer?> _answerLive(String coupleId, String day, String uid) =>
       _day(coupleId, day)
           .collection('answers')
           .doc(uid)
@@ -127,7 +138,11 @@ class UsService {
   }
 
   /// Frühere Tage (neueste zuerst), an denen mindestens jemand geantwortet hat.
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
   Stream<List<(String day, DayQuestion q)>> archive(String coupleId) =>
+      SharedStreams.get('archive/$coupleId', () => _archiveLive(coupleId));
+
+  Stream<List<(String day, DayQuestion q)>> _archiveLive(String coupleId) =>
       _couple(coupleId)
           .collection('days')
           .orderBy(FieldPath.documentId, descending: true)
@@ -153,7 +168,11 @@ class UsService {
   CollectionReference<Map<String, dynamic>> _letters(String coupleId) =>
       _couple(coupleId).collection('letters');
 
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
   Stream<List<Letter>> letters(String coupleId) =>
+      SharedStreams.get('letters/$coupleId', () => _lettersLive(coupleId));
+
+  Stream<List<Letter>> _lettersLive(String coupleId) =>
       _letters(coupleId)
           .orderBy('openAt')
           .snapshots()
@@ -197,7 +216,11 @@ class UsService {
   CollectionReference<Map<String, dynamic>> _dateIdeas(String coupleId) =>
       _couple(coupleId).collection('dateIdeas');
 
-  Stream<List<Idea>> dateIdeas(String coupleId) => _dateIdeas(coupleId)
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
+  Stream<List<Idea>> dateIdeas(String coupleId) =>
+      SharedStreams.get('dateIdeas/$coupleId', () => _dateIdeasLive(coupleId));
+
+  Stream<List<Idea>> _dateIdeasLive(String coupleId) => _dateIdeas(coupleId)
       .snapshots()
       .map(
         (s) => [
@@ -215,34 +238,4 @@ class UsService {
 
   Future<void> deleteDateIdea(String coupleId, String id) =>
       _dateIdeas(coupleId).doc(id).delete();
-
-  // --- Geschenkideen (nur für mich) -------------------------------------------
-
-  CollectionReference<Map<String, dynamic>> get _gifts =>
-      _db.collection('users').doc(_uid).collection('giftIdeas');
-
-  Stream<List<Idea>> giftIdeas() => _gifts
-      .orderBy('createdAt', descending: true)
-      .snapshots()
-      .map(
-        (s) => [
-          for (final d in s.docs)
-            Idea(
-              id: d.id,
-              text: d.data()['text'] as String? ?? '',
-              done: d.data()['done'] == true,
-            ),
-        ],
-      );
-
-  Future<void> addGiftIdea(String text) => _gifts.add({
-    'text': text.trim(),
-    'done': false,
-    'createdAt': FieldValue.serverTimestamp(),
-  });
-
-  Future<void> setGiftDone(String id, bool done) =>
-      _gifts.doc(id).update({'done': done});
-
-  Future<void> deleteGiftIdea(String id) => _gifts.doc(id).delete();
 }

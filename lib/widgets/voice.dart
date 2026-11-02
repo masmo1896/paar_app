@@ -777,13 +777,16 @@ class _AudioBubbleState extends State<AudioBubble> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
-                    width: 150,
-                    child: Waveform(
-                      levels: _levels,
-                      progress: progress,
-                      color: widget.accent,
-                      onSeek: _seek,
+                  // Eigene Ebene: beim Abspielen wird nur die Welle neu gemalt.
+                  RepaintBoundary(
+                    child: SizedBox(
+                      width: 150,
+                      child: Waveform(
+                        levels: _levels,
+                        progress: progress,
+                        color: widget.accent,
+                        onSeek: _seek,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 2),

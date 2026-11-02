@@ -14,6 +14,7 @@ import '../widgets/fox_bubble.dart';
 import '../widgets/partner_header.dart';
 import '../widgets/selfie_video.dart';
 import '../widgets/voice.dart';
+import '../widgets/motion.dart';
 
 // Der Chat: Nachrichten kommen in Echtzeit über einen Firestore-Stream.
 class ChatScreen extends StatefulWidget {
@@ -42,6 +43,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // Nachrichten, die wir schon als gelesen gemeldet haben (verhindert doppelte Schreibvorgänge).
   final _markedRead = <String>{};
   bool _uploading = false;
+  // Nachrichten-Verbindung nur EINMAL aufbauen – nicht bei jedem Neuzeichnen
+  // (sonst lädt die Liste bei jedem Tippen kurz neu).
+  late final _messages = CoupleService.instance
+      .messages(widget.coupleId)
+      .orderBy('createdAt', descending: true)
+      .limit(200)
+      .snapshots();
+
+  // IDs der Nachrichten, die schon angezeigt wurden (null = noch nichts geladen).
+  Set<String>? _knownIds;
+
   // Sprachaufnahme (halten, sperren, anhören); sendet über _sendVoice.
   late final _voice = VoiceRecorderController(onSend: _sendVoice);
   // gesetzt = die nächste Textnachricht ist eine Antwort darauf
@@ -236,6 +248,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _send() async {
     final text = _input.text.trim();
     if (text.isEmpty) return;
+    HapticFeedback.lightImpact();
     final editingId = _editingId;
     final replyTo = _replyTo;
     _input.clear();
@@ -512,12 +525,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final messages = CoupleService.instance
-        .messages(widget.coupleId)
-        .orderBy('createdAt', descending: true)
-        .limit(200)
-        .snapshots();
-
     return Scaffold(
       // Schlichte, niedrige Kopfzeile ohne Illustration, damit möglichst viel
       // vom Chat zu sehen ist. Zurück, Profilbild, Suche und ⋮-Menü sind gleich
@@ -563,7 +570,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               behavior: HitTestBehavior.translucent,
               onTap: () => FocusScope.of(context).unfocus(),
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: messages,
+                stream: _messages,
                 builder: (context, snap) {
                   if (!snap.hasData) {
                     return const Center(child: CircularProgressIndicator());
@@ -577,6 +584,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   _markPartnerMessagesRead(docs);
                   _countNewMessages(docs);
                   _docs = docs;
+                  // Beim ersten Laden gelten alle Nachrichten als bekannt –
+                  // nur später neu eintreffende gleiten sanft herein.
+                  _knownIds ??= {for (final d in docs) d.id};
                   return Stack(
                     children: [
                       // Oben verblassen die Sprechblasen weich, bevor sie unter
@@ -618,7 +628,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             final showDate =
                                 time != null &&
                                 (older == null || !_sameDay(time, older));
-                            return Column(
+                            final isNew = _knownIds!.add(doc.id);
+                            final item = Column(
                               children: [
                                 if (showDate) _DateChip(date: time),
                                 _SwipeToReply(
@@ -640,6 +651,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                 ),
                               ],
                             );
+                            return isNew
+                                ? FadeSlideIn(
+                                    key: ValueKey('neu-${doc.id}'),
+                                    offset: 18,
+                                    child: item,
+                                  )
+                                : item;
                           },
                         ),
                       ),
@@ -1370,6 +1388,9 @@ class _ChatImage extends StatelessWidget {
             url,
             width: _width,
             fit: BoxFit.cover,
+            // Nur so gross dekodieren, wie die Blase ist (spart viel Speicher).
+            cacheWidth: (_width * MediaQuery.devicePixelRatioOf(context))
+                .round(),
             semanticLabel: label,
             // Platzhalter, bis das Bild geladen ist (sonst wäre die Blase kurz flach).
             frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>
@@ -1438,15 +1459,17 @@ class _InputBar extends StatelessWidget {
                   if (state == VoiceState.holding)
                     mic
                   else
-                    IconButton.filled(
-                      tooltip: 'Sprachnachricht senden',
-                      onPressed: voice.send,
-                      style: IconButton.styleFrom(
-                        backgroundColor: Kitsune.lantern,
-                        foregroundColor: Kitsune.paper,
-                        minimumSize: const Size(52, 52),
+                    PressScale(
+                      child: IconButton.filled(
+                        tooltip: 'Sprachnachricht senden',
+                        onPressed: voice.send,
+                        style: IconButton.styleFrom(
+                          backgroundColor: Kitsune.lantern,
+                          foregroundColor: Kitsune.paper,
+                          minimumSize: const Size(52, 52),
+                        ),
+                        icon: const Icon(Icons.send_rounded),
                       ),
-                      icon: const Icon(Icons.send_rounded),
                     ),
                 ],
               );
@@ -1491,14 +1514,16 @@ class _InputBar extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 if (hasText)
-                  IconButton.filled(
-                    onPressed: onSend,
-                    style: IconButton.styleFrom(
-                      backgroundColor: scheme.tertiary,
-                      foregroundColor: scheme.onTertiary,
-                      minimumSize: const Size(48, 48),
+                  PressScale(
+                    child: IconButton.filled(
+                      onPressed: onSend,
+                      style: IconButton.styleFrom(
+                        backgroundColor: scheme.tertiary,
+                        foregroundColor: scheme.onTertiary,
+                        minimumSize: const Size(48, 48),
+                      ),
+                      icon: const Icon(Icons.send_rounded),
                     ),
-                    icon: const Icon(Icons.send_rounded),
                   )
                 else ...[
                   mic,

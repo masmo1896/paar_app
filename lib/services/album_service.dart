@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../utils/shared_stream.dart';
+
 // Datenmodell:
 //   couples/{coupleId}/albums/{albumId}              -> { name, coverUrl?, photoCount, createdBy, createdAt }
 //   couples/{coupleId}/albums/{albumId}/photos/{id}  -> { url, path, addedBy, createdAt }
@@ -78,18 +80,35 @@ class AlbumService {
     String albumId,
   ) => _albums(coupleId).doc(albumId).collection('photos');
 
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
   Stream<List<Album>> albums(String coupleId) =>
+      SharedStreams.get('albums/$coupleId', () => _albumsLive(coupleId));
+
+  Stream<List<Album>> _albumsLive(String coupleId) =>
       _albums(coupleId)
           .snapshots()
           .map((s) => s.docs.map(Album.fromDoc).toList());
 
-  Stream<Album?> album(String coupleId, String albumId) =>
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
+  Stream<Album?> album(String coupleId, String albumId) => SharedStreams.get(
+    'album/$coupleId/$albumId',
+    () => _albumLive(coupleId, albumId),
+  );
+
+  Stream<Album?> _albumLive(String coupleId, String albumId) =>
       _albums(coupleId)
           .doc(albumId)
           .snapshots()
           .map((d) => d.exists ? Album.fromDoc(d) : null);
 
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
   Stream<List<AlbumPhoto>> photos(String coupleId, String albumId) =>
+      SharedStreams.get(
+        'photos/$coupleId/$albumId',
+        () => _photosLive(coupleId, albumId),
+      );
+
+  Stream<List<AlbumPhoto>> _photosLive(String coupleId, String albumId) =>
       _photos(coupleId, albumId)
           .orderBy('createdAt', descending: true)
           .snapshots()

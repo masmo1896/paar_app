@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Paar App</string>
+	<string>SchmiegiHOME</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -26,6 +26,14 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Damit du Fotos und Selfie-Videos für deine Partnerin aufnehmen kannst.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Damit nur du die App mit Face ID entsperren kannst.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Damit du Sprachnachrichten und Videobotschaften aufnehmen kannst.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Damit du Fotos aus deiner Galerie im Chat teilen kannst.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -66,13 +74,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>Damit du Fotos und Selfie-Videos für deine Partnerin aufnehmen kannst.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Damit du Fotos aus deiner Galerie im Chat teilen kannst.</string>
-	<key>NSFaceIDUsageDescription</key>
-	<string>Damit nur du die App mit Face ID entsperren kannst.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Damit du Sprachnachrichten und Videobotschaften aufnehmen kannst.</string>
 </dict>
 </plist>

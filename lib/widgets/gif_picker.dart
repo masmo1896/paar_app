@@ -162,6 +162,7 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
                             child: Image.network(
                               gif.preview,
                               fit: BoxFit.cover,
+                              cacheWidth: 300,
                               semanticLabel: 'GIF',
                             ),
                           ),

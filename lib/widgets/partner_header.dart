@@ -10,6 +10,7 @@ import '../services/push_service.dart';
 import '../theme.dart';
 import 'fox_bubble.dart';
 import 'who.dart';
+import '../utils/shared_stream.dart';
 
 /// Rundes Profilbild; ohne Bild wird der erste Buchstabe des Namens gezeigt.
 class Avatar extends StatelessWidget {
@@ -31,7 +32,14 @@ class Avatar extends StatelessWidget {
     return CircleAvatar(
       radius: radius,
       backgroundColor: scheme.secondaryContainer,
-      foregroundImage: url == null ? null : NetworkImage(url),
+      // Profilbild nur in Anzeigegrösse dekodieren.
+      foregroundImage: url == null
+          ? null
+          : ResizeImage(
+              NetworkImage(url),
+              width: (radius * 2 * MediaQuery.devicePixelRatioOf(context))
+                  .round(),
+            ),
       child: Text(
         name.isEmpty ? '♥' : name.characters.first.toUpperCase(),
         style: TextStyle(
@@ -156,13 +164,31 @@ class _TypingBubbleState extends State<TypingBubble> {
       _typingSub?.cancel();
       _typingSub = uid == null
           ? null
-          : CoupleService.instance
-                .typingSince(widget.coupleId, uid)
-                .listen((since) => setState(() => _since = since));
+          : CoupleService.instance.typingSince(widget.coupleId, uid).listen((
+              since,
+            ) {
+              setState(() => _since = since);
+              _updateTick();
+            });
     });
-    _tick = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (mounted && _since != null) setState(() {});
-    });
+  }
+
+  // Akku: Der Prüf-Timer läuft nur, solange gerade jemand tippt – nicht dauernd.
+  void _updateTick() {
+    if (_since == null) {
+      _tick?.cancel();
+      _tick = null;
+    } else {
+      _tick ??= Timer.periodic(const Duration(seconds: 2), (_) {
+        if (!mounted) return;
+        final since = _since;
+        if (since == null || DateTime.now().difference(since) >= _validFor) {
+          _tick?.cancel();
+          _tick = null;
+        }
+        setState(() {});
+      });
+    }
   }
 
   @override
@@ -200,7 +226,7 @@ class _TypingBubbleState extends State<TypingBubble> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          _BouncingDots(),
+                          RepaintBoundary(child: _BouncingDots()),
                           SizedBox(width: 8),
                           Text(
                             'schreibt…',
@@ -358,6 +384,7 @@ class ChatMenu extends StatelessWidget {
   // Erst dieses Gerät bei den Push-Nachrichten abmelden, dann ausloggen.
   Future<void> _logout() async {
     await PushService.instance.stop();
+    SharedStreams.clear(); // alte Verbindungen schliessen
     await FirebaseAuth.instance.signOut();
   }
 

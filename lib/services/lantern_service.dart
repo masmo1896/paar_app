@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../utils/shared_stream.dart';
+
 // Datenmodell in Firestore:
 //   couples/{coupleId}/lanterns/{id} -> { from: uid, createdAt }
 //   users/{uid}.lanternsSeenAt       -> bis wann ich die Laternen meines Schatzes gesehen habe
@@ -31,7 +33,11 @@ class LanternService {
       _db.collection('couples').doc(coupleId).collection('lanterns');
 
   /// Die neuesten Laternen zuerst.
-  Stream<List<Lantern>> lanterns(String coupleId) => _lanterns(coupleId)
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
+  Stream<List<Lantern>> lanterns(String coupleId) =>
+      SharedStreams.get('lanterns/$coupleId', () => _lanternsLive(coupleId));
+
+  Stream<List<Lantern>> _lanternsLive(String coupleId) => _lanterns(coupleId)
       .orderBy('createdAt', descending: true)
       .limit(300)
       .snapshots()

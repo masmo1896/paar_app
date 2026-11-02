@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../services/couple_service.dart';
+import '../utils/shared_stream.dart';
 import '../services/planner_service.dart';
 import '../theme.dart';
 import '../utils/dates.dart';
@@ -12,11 +13,14 @@ import '../widgets/lantern_sky.dart';
 import '../widgets/who.dart';
 import 'countdown_screen.dart';
 import 'us_features.dart';
+import '../widgets/motion.dart';
 
-/// Startseite wie im Kitsune-Mockup: Begrüssung unter Laternen, nächster Countdown
-/// als Ticket, euer Laternenhimmel, die Termine von heute, die nächsten To-dos
-/// und die letzte Nachricht.
-class HomeScreen extends StatelessWidget {
+/// Startseite: Begrüssung unter Laternen, dann (1) ungelesene Nachricht,
+/// (2) euer Laternenhimmel, (3) Countdown-Ticket, (4) Frage des Tages,
+/// danach die Termine von heute und die nächsten To-dos. Die Laternen-
+/// Illustration liegt gross im Hintergrund, läuft weich ausgeblendet hinter die
+/// Karten und wandert beim Scrollen etwas langsamer mit (Parallax).
+class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     required this.couple,
@@ -33,35 +37,110 @@ class HomeScreen extends StatelessWidget {
   final ValueChanged<int> onOpenTab;
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final couple = widget.couple;
+    final onOpenTab = widget.onOpenTab;
+    final top = MediaQuery.paddingOf(context).top;
     return Scaffold(
-      body: ListView(
-        padding: EdgeInsets.zero,
+      body: Stack(
         children: [
-          _Header(couple: couple),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Frage des Tages ganz oben; verschwindet, wenn beide geantwortet haben.
-                _QuestionOnTop(couple: couple),
-                _NextCountdown(couple: couple),
-                const SizedBox(height: 16),
-                LanternSky(couple: couple, active: active),
-                const SizedBox(height: 16),
-                _Today(couple: couple, onOpenCalendar: () => onOpenTab(2)),
-                const SizedBox(height: 14),
-                _TodoSummary(couple: couple, onOpen: () => onOpenTab(3)),
-                const SizedBox(height: 14),
-                _LastMessage(couple: couple, onOpen: () => onOpenTab(1)),
-              ],
-            ),
+          // Etwas nach oben versetzt, damit die Laternen über der Begrüssung hängen.
+          Positioned(
+            top: -44,
+            left: 0,
+            right: 0,
+            height: 300 + top,
+            child: _ParallaxLanterns(scroll: _scroll),
+          ),
+          ListView(
+            controller: _scroll,
+            padding: EdgeInsets.zero,
+            children: [
+              _Header(couple: couple),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  // Karten erscheinen beim Öffnen sanft nacheinander.
+                  children: staggered([
+                    // 1. Ungelesene Nachricht (nur wenn es eine gibt)
+                    _LastMessage(couple: couple, onOpen: () => onOpenTab(1)),
+                    // 2. Unser Laternenhimmel
+                    LanternSky(couple: couple, active: widget.active),
+                    const SizedBox(height: 16),
+                    // 3. Countdown
+                    _NextCountdown(couple: couple),
+                    const SizedBox(height: 16),
+                    // 4. Frage des Tages; verschwindet, wenn beide geantwortet haben.
+                    _QuestionOnTop(couple: couple),
+                    _Today(couple: couple, onOpenCalendar: () => onOpenTab(2)),
+                    const SizedBox(height: 14),
+                    _TodoSummary(couple: couple, onOpen: () => onOpenTab(3)),
+                  ]),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
+}
+
+/// Grosse Laternen-Illustration im Hintergrund: oben kräftig, nach unten weich
+/// ausgeblendet (läuft subtil hinter die Karten). Beim Scrollen wandert sie nur
+/// mit 45 % der Geschwindigkeit mit – das gibt Tiefe. Eigene Ebene, damit das
+/// Verschieben nichts neu malen muss.
+class _ParallaxLanterns extends StatelessWidget {
+  const _ParallaxLanterns({required this.scroll});
+
+  final ScrollController scroll;
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: scroll,
+    builder: (context, child) {
+      final offset = scroll.hasClients ? math.max(0.0, scroll.offset) : 0.0;
+      return Transform.translate(
+        offset: Offset(0, -offset * 0.45),
+        child: child,
+      );
+    },
+    child: RepaintBoundary(
+      child: ShaderMask(
+        blendMode: BlendMode.dstIn,
+        shaderCallback: (rect) => const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white,
+            Colors.white,
+            Color(0x66FFFFFF),
+            Colors.transparent,
+          ],
+          stops: [0, 0.5, 0.78, 1],
+        ).createShader(rect),
+        child: SvgPicture.asset(
+          KitsuneArt.lanterns.asset,
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+        ),
+      ),
+    ),
+  );
 }
 
 /// Frage des Tages mit Abstand darunter – nur solange sie offen ist.
@@ -77,7 +156,7 @@ class _QuestionOnTop extends StatelessWidget {
   );
 }
 
-/// Laternen-Illustration mit "こんばんは / Guten Abend, Marc / Samstag, 31. Oktober".
+/// Begrüssung "こんばんは / Guten Abend, Marc / Samstag, 31. Oktober" über den Laternen.
 class _Header extends StatelessWidget {
   const _Header({required this.couple});
 
@@ -93,16 +172,12 @@ class _Header extends StatelessWidget {
         : ('こんばんは', 'Guten Abend');
     final top = MediaQuery.paddingOf(context).top;
 
+    // Nur Text – die Illustration liegt als Hintergrund dahinter.
     return SizedBox(
-      height: 172 + top,
+      height: 214 + top,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          SvgPicture.asset(
-            KitsuneArt.lanterns.asset,
-            fit: BoxFit.cover,
-            alignment: Alignment.bottomCenter,
-          ),
           Positioned(
             left: 20,
             right: 20,
@@ -214,8 +289,8 @@ class _NextCountdown extends StatelessWidget {
                     )
                   : Row(
                       children: [
-                        Text(
-                          '$days',
+                        CountUp(
+                          value: days,
                           style: AppTheme.serif(
                             size: 30,
                             color: Kitsune.indigo,
@@ -574,85 +649,93 @@ class _LastMessage extends StatelessWidget {
     final partner = couple.partnerUid;
     if (partner == null) return const SizedBox.shrink();
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: CoupleService.instance
-          .messages(couple.coupleId)
-          .orderBy('createdAt', descending: true)
-          .limit(150)
-          .snapshots(),
+      // Geteilt, damit nicht bei jedem Neuzeichnen neu geladen wird.
+      stream: SharedStreams.get(
+        'recentMessages/${couple.coupleId}',
+        () => CoupleService.instance
+            .messages(couple.coupleId)
+            .orderBy('createdAt', descending: true)
+            .limit(50)
+            .snapshots(),
+      ),
       builder: (context, snap) {
         final docs = snap.data?.docs ?? [];
         final msg = docs
             .map((d) => d.data())
             .where((d) => d['senderId'] == partner && d['type'] != 'deleted')
             .firstOrNull;
-        if (msg == null) return const SizedBox.shrink();
+        // Nur zeigen, wenn die neueste Nachricht des Schatzes noch ungelesen ist.
+        if (msg == null || msg['read'] == true) return const SizedBox.shrink();
         final time = (msg['createdAt'] as Timestamp?)?.toDate();
-        final unread = msg['read'] != true;
+        const unread = true;
         final name = couple.partnerLabel;
 
-        return Material(
-          color: Kitsune.paper,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(4),
-              topRight: Radius.circular(18),
-              bottomLeft: Radius.circular(18),
-              bottomRight: Radius.circular(18),
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Material(
+            color: Kitsune.paper,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(4),
+                topRight: Radius.circular(18),
+                bottomLeft: Radius.circular(18),
+                bottomRight: Radius.circular(18),
+              ),
             ),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onOpen,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 17,
-                    backgroundColor: Kitsune.night,
-                    child: Text(
-                      name.characters.first.toUpperCase(),
-                      style: AppTheme.serif(size: 15, color: Kitsune.paper),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          time == null
-                              ? name
-                              : '$name · ${timeKey(TimeOfDay.fromDateTime(time))}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Kitsune.plum,
-                          ),
-                        ),
-                        Text(
-                          CoupleService.previewOf(msg),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Kitsune.night,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (unread)
-                    Container(
-                      width: 9,
-                      height: 9,
-                      margin: const EdgeInsets.only(left: 8),
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Kitsune.lantern,
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onOpen,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 17,
+                      backgroundColor: Kitsune.night,
+                      child: Text(
+                        name.characters.first.toUpperCase(),
+                        style: AppTheme.serif(size: 15, color: Kitsune.paper),
                       ),
                     ),
-                ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            time == null
+                                ? name
+                                : '$name · ${timeKey(TimeOfDay.fromDateTime(time))}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Kitsune.plum,
+                            ),
+                          ),
+                          Text(
+                            CoupleService.previewOf(msg),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Kitsune.night,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (unread)
+                      Container(
+                        width: 9,
+                        height: 9,
+                        margin: const EdgeInsets.only(left: 8),
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Kitsune.lantern,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),

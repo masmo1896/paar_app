@@ -15,10 +15,12 @@ import 'chat_media_screen.dart';
 import 'countdown_screen.dart';
 import 'us_features.dart';
 import 'us_sections.dart';
+import '../utils/shared_stream.dart';
+import '../widgets/motion.dart';
 
 /// "Wir"-Seite – das Herz eurer Beziehung: Füchse auf der Brücke, eure Namen
-/// mit Zusammen-seit-Zähler, Frage des Tages, Liebesbriefe, Date-Glas,
-/// Erinnerungen und private Geschenkideen. Einstellungen hinter dem Zahnrad.
+/// mit Zusammen-seit-Zähler, Frage des Tages, Liebesbriefe, Date-Glas und
+/// Erinnerungen. Einstellungen hinter dem Zahnrad.
 class UsScreen extends StatelessWidget {
   const UsScreen({super.key, required this.couple});
 
@@ -69,7 +71,8 @@ class UsScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+              // Karten erscheinen beim Öffnen sanft nacheinander.
+              children: staggered([
                 _Names(couple: couple),
                 const SizedBox(height: 18),
                 DailyQuestionCard(couple: couple),
@@ -79,9 +82,7 @@ class UsScreen extends StatelessWidget {
                 DateJarCard(couple: couple),
                 const SizedBox(height: 22),
                 _Memories(couple: couple),
-                const SizedBox(height: 22),
-                GiftIdeasCard(couple: couple),
-              ],
+              ]),
             ),
           ),
         ],
@@ -491,6 +492,7 @@ class _Settings extends StatelessWidget {
                 label: 'Abmelden',
                 onTap: () async {
                   await PushService.instance.stop();
+                  SharedStreams.clear(); // alte Verbindungen schliessen
                   await FirebaseAuth.instance.signOut();
                 },
               ),

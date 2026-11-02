@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/couple_service.dart';
+import '../utils/shared_stream.dart';
 import '../theme.dart';
 import '../widgets/selfie_video.dart';
 import '../widgets/voice.dart' show formatDuration;
@@ -28,7 +29,10 @@ class ChatMedia {
 
 /// Alle Fotos und Videos aus dem Chat, die neuesten zuerst.
 /// Ohne orderBy in der Abfrage – sonst bräuchte Firestore einen extra Index.
-Stream<List<ChatMedia>> chatMediaStream(String coupleId) => CoupleService
+Stream<List<ChatMedia>> chatMediaStream(String coupleId) =>
+    SharedStreams.get('chatMedia/$coupleId', () => _chatMediaLive(coupleId));
+
+Stream<List<ChatMedia>> _chatMediaLive(String coupleId) => CoupleService
     .instance
     .messages(coupleId)
     .where('type', whereIn: ['image', 'video'])

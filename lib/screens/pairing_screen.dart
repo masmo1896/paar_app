@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../services/couple_service.dart';
 import '../services/push_service.dart';
 import '../theme.dart';
+import '../utils/shared_stream.dart';
 
 // Verbindet zwei Konten: einer erstellt einen Code, der andere gibt ihn ein.
 class PairingScreen extends StatefulWidget {
@@ -71,6 +72,7 @@ class _PairingScreenState extends State<PairingScreen> {
                       icon: const Icon(Icons.logout_rounded),
                       onPressed: () async {
                         await PushService.instance.stop();
+                        SharedStreams.clear(); // alte Verbindungen schliessen
                         await FirebaseAuth.instance.signOut();
                       },
                     ),

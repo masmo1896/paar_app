@@ -19,7 +19,7 @@ class PaarApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Wir zwei',
+      title: 'SchmiegiHOME',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
@@ -33,7 +33,7 @@ class PaarApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      // Pfirsich-Verlauf hinter allen Bildschirmen.
+      // Nachtblaues Wellenmuster hinter allen Bildschirmen.
       builder: (context, child) => AppBackground(child: child),
       home: const AppGate(),
     );

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../utils/dates.dart';
 
+import '../utils/shared_stream.dart';
+
 /// Wer ist zuständig / betroffen: eine Person (uid) oder beide.
 const both = 'both';
 
@@ -161,7 +163,11 @@ class PlannerService {
 
   // --- To-dos -----------------------------------------------------------
 
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
   Stream<List<Todo>> todos(String coupleId) =>
+      SharedStreams.get('todos/$coupleId', () => _todosLive(coupleId));
+
+  Stream<List<Todo>> _todosLive(String coupleId) =>
       _todos(coupleId)
           .snapshots()
           .map((s) => s.docs.map(Todo.fromDoc).toList());
@@ -203,7 +209,13 @@ class PlannerService {
   CollectionReference<Map<String, dynamic>> _countdowns(String coupleId) =>
       _db.collection('couples').doc(coupleId).collection('countdowns');
 
-  Stream<List<Countdown>> countdowns(String coupleId) =>
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
+  Stream<List<Countdown>> countdowns(String coupleId) => SharedStreams.get(
+    'countdowns/$coupleId',
+    () => _countdownsLive(coupleId),
+  );
+
+  Stream<List<Countdown>> _countdownsLive(String coupleId) =>
       _countdowns(coupleId)
           .snapshots()
           .map((s) => s.docs.map(Countdown.fromDoc).toList());
@@ -235,7 +247,11 @@ class PlannerService {
 
   // --- Termine ----------------------------------------------------------
 
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
   Stream<List<CalEvent>> events(String coupleId) =>
+      SharedStreams.get('events/$coupleId', () => _eventsLive(coupleId));
+
+  Stream<List<CalEvent>> _eventsLive(String coupleId) =>
       _events(coupleId)
           .snapshots()
           .map((s) => s.docs.map(CalEvent.fromDoc).toList());

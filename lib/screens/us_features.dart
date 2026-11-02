@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/planner_service.dart';
 import '../services/us_service.dart';
@@ -10,6 +11,7 @@ import '../utils/couple_ideas.dart';
 import '../utils/dates.dart';
 import '../widgets/who.dart';
 import 'us_sections.dart';
+import '../widgets/motion.dart';
 
 const _hint = TextStyle(fontSize: 13, color: Kitsune.mist, height: 1.35);
 
@@ -63,6 +65,7 @@ class _DailyQuestionCardState extends State<DailyQuestionCard> {
     final text = _input.text.trim();
     if (text.isEmpty || _sending) return;
     FocusScope.of(context).unfocus();
+    HapticFeedback.lightImpact();
     setState(() => _sending = true);
     try {
       await _service.answerToday(widget.couple.coupleId, _question, text);
@@ -131,14 +134,16 @@ class _DailyQuestionCardState extends State<DailyQuestionCard> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    FilledButton.icon(
-                      onPressed: _sending ? null : _send,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Kitsune.lantern,
-                        foregroundColor: Kitsune.paper,
+                    PressScale(
+                      child: FilledButton.icon(
+                        onPressed: _sending ? null : _send,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Kitsune.lantern,
+                          foregroundColor: Kitsune.paper,
+                        ),
+                        icon: const Icon(Icons.send_rounded, size: 18),
+                        label: const Text('Antwort senden'),
                       ),
-                      icon: const Icon(Icons.send_rounded, size: 18),
-                      label: const Text('Antwort senden'),
                     ),
                     const SizedBox(height: 8),
                     _StatusLine(
@@ -382,21 +387,23 @@ class LoveLettersCard extends StatelessWidget {
                 for (final l in sorted.take(5))
                   _LetterRow(couple: couple, letter: l),
               const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: couple.partnerUid == null
-                    ? null
-                    : () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          fullscreenDialog: true,
-                          builder: (_) => LetterComposer(couple: couple),
+              PressScale(
+                child: FilledButton.icon(
+                  onPressed: couple.partnerUid == null
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            fullscreenDialog: true,
+                            builder: (_) => LetterComposer(couple: couple),
+                          ),
                         ),
-                      ),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Kitsune.lantern,
-                  foregroundColor: Kitsune.paper,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Kitsune.lantern,
+                    foregroundColor: Kitsune.paper,
+                  ),
+                  icon: const Icon(Icons.mail_outline_rounded, size: 18),
+                  label: const Text('Brief schreiben'),
                 ),
-                icon: const Icon(Icons.mail_outline_rounded, size: 18),
-                label: const Text('Brief schreiben'),
               ),
             ],
           );
@@ -543,6 +550,7 @@ class _LetterComposerState extends State<LetterComposer> {
 
   Future<void> _send() async {
     if (_text.text.trim().isEmpty || _sending) return;
+    HapticFeedback.lightImpact();
     setState(() => _sending = true);
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
@@ -914,14 +922,16 @@ class _DateJarCardState extends State<DateJarCard>
                               spacing: 4,
                               crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
-                                FilledButton(
-                                  onPressed: () => _plan(idea),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: Kitsune.lantern,
-                                    foregroundColor: Kitsune.paper,
-                                    minimumSize: const Size(0, 38),
+                                PressScale(
+                                  child: FilledButton(
+                                    onPressed: () => _plan(idea),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: Kitsune.lantern,
+                                      foregroundColor: Kitsune.paper,
+                                      minimumSize: const Size(0, 38),
+                                    ),
+                                    child: const Text('Machen wir!'),
                                   ),
-                                  child: const Text('Machen wir!'),
                                 ),
                                 TextButton(
                                   onPressed: () => _draw(pool),
@@ -953,113 +963,6 @@ class _DateJarCardState extends State<DateJarCard>
           ),
         );
       },
-    );
-  }
-}
-
-// ===========================================================================
-// Geschenkideen (nur für mich)
-
-class GiftIdeasCard extends StatefulWidget {
-  const GiftIdeasCard({super.key, required this.couple});
-
-  final Couple couple;
-
-  @override
-  State<GiftIdeasCard> createState() => _GiftIdeasCardState();
-}
-
-class _GiftIdeasCardState extends State<GiftIdeasCard> {
-  late final _ideas = UsService.instance.giftIdeas();
-
-  Future<void> _add() async {
-    final text = await askText(
-      context,
-      title: 'Geschenkidee',
-      hint: 'z. B. Das Buch aus dem Schaufenster',
-    );
-    if (text == null || text.trim().isEmpty) return;
-    await UsService.instance.addGiftIdea(text);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final partner = widget.couple.partnerLabel;
-    return UsCard(
-      stamp: '贈',
-      title: 'Geschenkideen für $partner',
-      trailing: const Tooltip(
-        message: 'Nur für dich sichtbar',
-        child: Icon(Icons.lock_outline_rounded, size: 18, color: Kitsune.mist),
-      ),
-      child: StreamBuilder<List<Idea>>(
-        stream: _ideas,
-        builder: (context, snap) {
-          final ideas = snap.data ?? const [];
-          // Offene zuerst, Verschenktes unten.
-          final sorted = [
-            ...ideas.where((i) => !i.done),
-            ...ideas.where((i) => i.done),
-          ];
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (sorted.isEmpty)
-                Text(
-                  'Nur du siehst diese Liste. Notiere Wünsche und kleine Ideen, '
-                  'die $partner Freude machen würden.',
-                  style: _hint,
-                ),
-              for (final idea in sorted)
-                Dismissible(
-                  key: ValueKey(idea.id),
-                  direction: DismissDirection.endToStart,
-                  background: Container(
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 12),
-                    child: const Icon(
-                      Icons.delete_outline_rounded,
-                      color: Kitsune.lantern,
-                    ),
-                  ),
-                  onDismissed: (_) =>
-                      UsService.instance.deleteGiftIdea(idea.id),
-                  child: CheckboxListTile(
-                    value: idea.done,
-                    onChanged: (v) =>
-                        UsService.instance.setGiftDone(idea.id, v ?? false),
-                    controlAffinity: ListTileControlAffinity.leading,
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    title: Text(
-                      idea.text,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: idea.done ? Kitsune.mist : Kitsune.paper,
-                        decoration: idea.done
-                            ? TextDecoration.lineThrough
-                            : null,
-                      ),
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: _add,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Idee notieren'),
-              ),
-              if (sorted.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                const Text(
-                  'Abhaken = verschenkt · nach links wischen = löschen',
-                  style: TextStyle(fontSize: 11.5, color: Kitsune.mist),
-                ),
-              ],
-            ],
-          );
-        },
-      ),
     );
   }
 }

@@ -10,6 +10,7 @@ import '../services/couple_service.dart';
 import '../services/lantern_service.dart';
 import '../theme.dart';
 import 'who.dart';
+import 'motion.dart';
 
 /// Unser Laternenhimmel: Jede Laterne heisst "Ich denk an dich" und bleibt für
 /// immer am Himmel – deine rot, die deines Schatzes aqua.
@@ -91,6 +92,17 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
       _profileLoaded = true;
       _maybeSendFox();
     });
+  }
+
+  // "Bewegung reduzieren" am Handy: Laternen schweben nicht.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reduceMotion(context)) {
+      _float.stop();
+    } else if (!_float.isAnimating) {
+      _float.repeat();
+    }
   }
 
   @override
@@ -196,52 +208,94 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
             child: LayoutBuilder(
               builder: (context, box) {
                 final size = Size(box.maxWidth, _skyHeight);
-                return AnimatedBuilder(
-                  animation: Listenable.merge([_float, _fly, _fox, _party]),
-                  builder: (context, _) => Stack(
-                    clipBehavior: Clip.none,
-                    children: [
+                final hidden = {?_flyingId, ?_foxLanternId};
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // Sterne und Mond: einmal gemalt, bleiben stehen.
+                    const Positioned.fill(
+                      child: RepaintBoundary(
+                        child: CustomPaint(painter: _StarsPainter()),
+                      ),
+                    ),
+                    // Laternen in 3 Gruppen. Jede Gruppe wird nur neu gemalt,
+                    // wenn sich Laternen ändern; das Schweben verschiebt nur
+                    // die fertige Ebene (kostet fast nichts).
+                    for (var g = 0; g < _SkyPainter.groups; g++)
                       Positioned.fill(
-                        child: CustomPaint(
-                          painter: _SkyPainter(
-                            lanterns: _lanterns,
-                            me: _me,
-                            float: _float.value,
-                            hidden: {?_flyingId, ?_foxLanternId},
+                        child: AnimatedBuilder(
+                          animation: _float,
+                          builder: (context, child) => Transform.translate(
+                            offset: Offset(
+                              0,
+                              math.sin(
+                                    (_float.value + g / _SkyPainter.groups) *
+                                        2 *
+                                        math.pi,
+                                  ) *
+                                  2.2,
+                            ),
+                            child: child,
+                          ),
+                          child: RepaintBoundary(
+                            child: CustomPaint(
+                              painter: _SkyPainter(
+                                lanterns: _lanterns,
+                                me: _me,
+                                hidden: hidden,
+                                group: g,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                      // Titel oben links.
-                      Positioned(
-                        left: 14,
-                        top: 10,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'とうろう',
-                              style: AppTheme.serif(
-                                size: 10,
-                                weight: FontWeight.w600,
-                                color: Kitsune.aqua,
-                              ).copyWith(letterSpacing: 3),
+                    // Titel oben links.
+                    Positioned(
+                      left: 14,
+                      top: 10,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'とうろう',
+                            style: AppTheme.serif(
+                              size: 10,
+                              weight: FontWeight.w600,
+                              color: Kitsune.aqua,
+                            ).copyWith(letterSpacing: 3),
+                          ),
+                          Text(
+                            'Unser Laternenhimmel',
+                            style: AppTheme.serif(size: 17).copyWith(
+                              shadows: const [
+                                Shadow(color: Kitsune.deeper, blurRadius: 8),
+                              ],
                             ),
-                            Text(
-                              'Unser Laternenhimmel',
-                              style: AppTheme.serif(size: 17).copyWith(
-                                shadows: const [
-                                  Shadow(color: Kitsune.deeper, blurRadius: 8),
-                                ],
-                              ),
-                            ),
-                          ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Aufsteigende Laterne, Fuchs-Bote, Feuerwerk: nur diese
+                    // Ebene läuft mit, und nur solange etwas passiert.
+                    Positioned.fill(
+                      child: RepaintBoundary(
+                        child: AnimatedBuilder(
+                          animation: Listenable.merge([_fly, _fox, _party]),
+                          builder: (context, _) => Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              if (_flyingId case final id?)
+                                _flyingLantern(size, id),
+                              if (_foxLanternId case final id?)
+                                ..._foxRun(size, id),
+                              if (_party.isAnimating)
+                                ..._fireworks(size, partner),
+                            ],
+                          ),
                         ),
                       ),
-                      if (_flyingId case final id?) _flyingLantern(size, id),
-                      if (_foxLanternId case final id?) ..._foxRun(size, id),
-                      if (_party.isAnimating) ..._fireworks(size, partner),
-                    ],
-                  ),
+                    ),
+                  ],
                 );
               },
             ),
@@ -289,9 +343,11 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
                     ],
                   ),
                 ),
-                _SendButton(
-                  onTap: _send,
-                  label: 'Laterne für $partner steigen lassen',
+                PressScale(
+                  child: _SendButton(
+                    onTap: _send,
+                    label: 'Laterne für $partner steigen lassen',
+                  ),
                 ),
               ],
             ),
@@ -574,18 +630,58 @@ void _paintLantern(
   );
 }
 
+/// Sterne und Mondsichel – ändern sich nie, werden nur einmal gemalt.
+class _StarsPainter extends CustomPainter {
+  const _StarsPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rnd = math.Random(7);
+    final star = Paint();
+    for (var i = 0; i < 40; i++) {
+      final p = Offset(
+        rnd.nextDouble() * size.width,
+        rnd.nextDouble() * size.height,
+      );
+      final r = 0.6 + rnd.nextDouble() * 0.8;
+      canvas.drawCircle(
+        p,
+        r,
+        star
+          ..color = Kitsune.paper.withValues(
+            alpha: 0.25 + 0.35 * rnd.nextDouble(),
+          ),
+      );
+    }
+    final moon = Offset(size.width - 34, 28);
+    canvas.drawCircle(moon, 13, Paint()..color = Kitsune.paper);
+    canvas.drawCircle(
+      moon + const Offset(-6, -4),
+      12,
+      Paint()..color = Kitsune.deeper,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_StarsPainter old) => false;
+}
+
+/// Eine von [groups] Laternen-Gruppen (Laterne Nr. i gehört zu Gruppe i % groups).
+/// Wird nur neu gemalt, wenn sich die Laternen oder die versteckten ändern.
 class _SkyPainter extends CustomPainter {
   _SkyPainter({
     required this.lanterns,
     required this.me,
-    required this.float,
     required this.hidden,
+    required this.group,
   });
 
   final List<Lantern> lanterns;
   final String me;
-  final double float;
   final Set<String> hidden;
+  final int group;
+
+  static const groups = 3;
 
   /// Höchstens so viele Laternen zeichnen (die neuesten).
   static const _maxDrawn = 120;
@@ -608,45 +704,15 @@ class _SkyPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Sterne (immer gleich verteilt).
-    final rnd = math.Random(7);
-    final star = Paint()..color = Kitsune.paper;
-    for (var i = 0; i < 40; i++) {
-      final p = Offset(
-        rnd.nextDouble() * size.width,
-        rnd.nextDouble() * size.height,
-      );
-      final twinkle =
-          0.25 + 0.35 * (0.5 + 0.5 * math.sin((float + i / 40) * 2 * math.pi));
-      canvas.drawCircle(
-        p,
-        0.6 + rnd.nextDouble() * 0.8,
-        star..color = Kitsune.paper.withValues(alpha: twinkle),
-      );
-    }
-    // Mondsichel oben rechts.
-    final moon = Offset(size.width - 34, 28);
-    canvas.drawCircle(moon, 13, Paint()..color = Kitsune.paper);
-    canvas.drawCircle(
-      moon + const Offset(-6, -4),
-      12,
-      Paint()..color = Kitsune.deeper,
-    );
-
-    // Laternen: älteste zuerst, damit neue obenauf liegen.
-    final drawn = lanterns.take(_maxDrawn).toList().reversed;
-    var i = 0;
-    for (final l in drawn) {
-      i++;
-      if (hidden.contains(l.id)) continue;
-      final seed = (l.id.hashCode % 1000) / 1000;
-      final bob = math.sin((float + seed) * 2 * math.pi) * 2.2;
-      final pos = positionOf(l.id, size) + Offset(0, bob);
-      // Neuere Laternen etwas grösser und heller.
-      final fresh = i / drawn.length;
+    // Älteste zuerst, damit neue obenauf liegen; neuere etwas grösser und heller.
+    final drawn = lanterns.take(_maxDrawn).toList().reversed.toList();
+    for (var i = 0; i < drawn.length; i++) {
+      final l = drawn[i];
+      if (i % groups != group || hidden.contains(l.id)) continue;
+      final fresh = (i + 1) / drawn.length;
       _paintLantern(
         canvas,
-        pos,
+        positionOf(l.id, size),
         l.from == me ? Kitsune.lantern : Kitsune.aqua,
         0.55 + 0.25 * fresh,
         0.5 + 0.5 * fresh,
@@ -655,7 +721,12 @@ class _SkyPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_SkyPainter old) => true;
+  bool shouldRepaint(_SkyPainter old) =>
+      !identical(old.lanterns, lanterns) ||
+      old.me != me ||
+      old.group != group ||
+      old.hidden.length != hidden.length ||
+      !old.hidden.containsAll(hidden);
 }
 
 /// Drei Feuerwerks-Blüten nacheinander in Laternenrot, Aqua und Papier.

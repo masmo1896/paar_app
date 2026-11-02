@@ -106,20 +106,31 @@ class UsService {
         () => _answerLive(coupleId, day, uid),
       );
 
-  Stream<Answer?> _answerLive(String coupleId, String day, String uid) =>
-      _day(coupleId, day)
-          .collection('answers')
-          .doc(uid)
-          .snapshots()
-          .map((d) {
-            final m = d.data();
-            if (m == null) return null;
-            return Answer(
-              text: m['text'] as String? ?? '',
-              at: (m['at'] as Timestamp?)?.toDate(),
-            );
-          })
-          .handleError((_) {});
+  /// Live-Antwort. Wird der Zugriff verweigert, versucht es die App nochmals
+  /// (nach 1, 2, 4, 8 … Sekunden): Wer als Zweite antwortet, fragt die Antwort
+  /// des Schatzes sonst ab, bevor die eigene beim Server angekommen ist – und
+  /// hätte sie danach nie mehr gesehen.
+  Stream<Answer?> _answerLive(String coupleId, String day, String uid) async* {
+    final ref = _day(coupleId, day).collection('answers').doc(uid);
+    for (var attempt = 0; ; attempt++) {
+      try {
+        await for (final d in ref.snapshots()) {
+          final m = d.data();
+          yield m == null
+              ? null
+              : Answer(
+                  text: m['text'] as String? ?? '',
+                  at: (m['at'] as Timestamp?)?.toDate(),
+                );
+        }
+        return;
+      } on FirebaseException {
+        yield null;
+        if (attempt >= 6) return; // nach gut einer Minute aufgeben
+        await Future<void>.delayed(Duration(seconds: 1 << attempt));
+      }
+    }
+  }
 
   /// Eigene Antwort speichern. Zuerst die Antwort, dann "ich habe geantwortet"
   /// am Tag eintragen – in einem Schritt (Batch).

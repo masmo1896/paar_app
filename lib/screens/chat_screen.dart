@@ -7,6 +7,7 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../services/couple_service.dart';
 import '../theme.dart';
+import 'camera_page.dart';
 import 'search_screen.dart';
 import '../widgets/gif_picker.dart';
 import '../widgets/fox_bubble.dart';
@@ -393,6 +394,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
     if (!mounted) return;
     if (source == _gifOption) return _sendGif();
+    if (source == ImageSource.camera) return _openCamera(CameraMode.photo);
     if (source is! ImageSource) return;
 
     await _upload(
@@ -419,19 +421,29 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  // Öffnet die Selfie-Kamera; nach der Aufnahme wird das Video gesendet.
-  Future<void> _recordSelfie() async {
-    final video = await Navigator.of(context).push<SelfieVideo>(
-      MaterialPageRoute(builder: (_) => const SelfieRecorderPage()),
-    );
-    if (video == null) return;
-    await _upload(
-      () => CoupleService.instance.sendVideo(
-        widget.coupleId,
-        video.path,
-        video.duration,
+  // Selfie-Video: Kamera direkt im Video-Modus mit der Frontkamera öffnen.
+  Future<void> _recordSelfie() => _openCamera(CameraMode.video, front: true);
+
+  /// Eigene Kamera (iPhone-Stil); danach Foto oder Video senden.
+  Future<void> _openCamera(CameraMode mode, {bool front = false}) async {
+    final shot = await Navigator.of(context).push<CameraShot>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => CameraPage(mode: mode, front: front),
       ),
-      'Video konnte nicht gesendet werden',
+    );
+    if (shot == null) return;
+    await _upload(
+      () => shot.isVideo
+          ? CoupleService.instance.sendVideo(
+              widget.coupleId,
+              shot.path,
+              shot.duration,
+            )
+          : CoupleService.instance.sendPhotoFile(widget.coupleId, shot.path),
+      shot.isVideo
+          ? 'Video konnte nicht gesendet werden'
+          : 'Foto konnte nicht gesendet werden',
     );
   }
 

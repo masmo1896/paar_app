@@ -288,13 +288,15 @@ class CoupleService {
       imageQuality: 80,
     );
     if (picked == null) return false;
+    await sendPhotoFile(coupleId, picked.path);
+    return true;
+  }
 
+  /// Lädt ein fertiges Foto (z. B. aus der eigenen Kamera) hoch und schickt es.
+  Future<void> sendPhotoFile(String coupleId, String path) async {
     final name = '${DateTime.now().millisecondsSinceEpoch}_$_uid.jpg';
     final ref = FirebaseStorage.instance.ref('couples/$coupleId/images/$name');
-    await ref.putData(
-      await picked.readAsBytes(),
-      SettableMetadata(contentType: 'image/jpeg'),
-    );
+    await ref.putFile(File(path), SettableMetadata(contentType: 'image/jpeg'));
     await messages(coupleId).add({
       'type': 'image',
       'imageUrl': await ref.getDownloadURL(),
@@ -302,7 +304,6 @@ class CoupleService {
       'createdAt': FieldValue.serverTimestamp(),
       'read': false,
     });
-    return true;
   }
 
   /// Schickt ein GIF. [url] ist ein GIPHY-Link oder ein Link auf Firebase Storage.

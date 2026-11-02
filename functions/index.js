@@ -33,7 +33,10 @@ async function partnerOf(coupleId, uid) {
 /** Schickt an alle Geräte von [uid]; ungültige Adressen werden aufgeräumt. */
 async function notify(uid, { title, body, type }) {
   const tokens = await db.collection('users').doc(uid).collection('tokens').get();
-  if (tokens.empty) return;
+  if (tokens.empty) {
+    console.log('notify: kein Gerät registriert für', uid);
+    return;
+  }
   const ids = tokens.docs.map((d) => d.id);
   const res = await getMessaging().sendEachForMulticast({
     tokens: ids,
@@ -100,18 +103,24 @@ exports.onReaction = onDocumentUpdated(
   },
 );
 
-// Neue Aufgabe, die dir zugewiesen wurde (oder euch beiden)
+// Neuer Eintrag in To-dos oder Einkaufsliste – die andere Person erfährt es
+// immer, der Text sagt, für wen er ist.
 exports.onTodo = onDocumentCreated(
   { document: 'couples/{coupleId}/todos/{id}', region: REGION },
   async (event) => {
     const t = event.data.data();
     const to = await partnerOf(event.params.coupleId, t.createdBy);
-    if (!to || (t.assignee !== to && t.assignee !== 'both')) return;
-    await notify(to, {
-      title: `${await nameOf(t.createdBy, to)} hat eine Aufgabe für dich`,
-      body: shorten(t.title),
-      type: 'todo',
-    });
+    if (!to) return;
+    const name = await nameOf(t.createdBy, to);
+    const title = t.list === 'shopping'
+      ? `🛒 ${name} hat etwas auf die Einkaufsliste gesetzt`
+      : t.assignee === to
+        ? `${name} hat eine Aufgabe für dich`
+        : t.assignee === 'both'
+          ? `${name} hat eine Aufgabe für euch beide`
+          : `${name} hat eine eigene Aufgabe eingetragen`;
+    await notify(to, { title, body: shorten(t.title), type: 'todo' });
+    console.log('onTodo: Push an', to, '–', title);
   },
 );
 

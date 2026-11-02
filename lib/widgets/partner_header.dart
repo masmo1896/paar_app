@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../screens/chat_media_screen.dart';
 import '../services/couple_service.dart';
 import '../services/push_service.dart';
 import '../theme.dart';
@@ -300,9 +301,11 @@ class HeaderCircle extends StatelessWidget {
   );
 }
 
-/// ⋮-Menü oben rechts: eigenes Profilbild, eigener Name, Abmelden.
+/// ⋮-Menü oben rechts: Fotos & Videos, eigenes Profilbild, eigener Name, Abmelden.
 class ChatMenu extends StatelessWidget {
-  const ChatMenu({super.key});
+  const ChatMenu({super.key, required this.coupleId});
+
+  final String coupleId;
 
   @override
   Widget build(BuildContext context) {
@@ -312,12 +315,24 @@ class ChatMenu extends StatelessWidget {
       padding: EdgeInsets.zero,
       icon: const Icon(Icons.more_vert),
       onSelected: (value) => switch (value) {
+        'media' => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ChatMediaScreen(coupleId: coupleId),
+          ),
+        ),
         'photo' => _changePhoto(context),
         'name' => _changeName(context),
         'logout' => _logout(),
         _ => null,
       },
       itemBuilder: (_) => const [
+        PopupMenuItem(
+          value: 'media',
+          child: ListTile(
+            leading: Icon(Icons.photo_library_outlined),
+            title: Text('Fotos & Videos'),
+          ),
+        ),
         PopupMenuItem(
           value: 'photo',
           child: ListTile(

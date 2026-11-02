@@ -537,7 +537,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(width: 10),
-            const HeaderCircle(child: ChatMenu()),
+            HeaderCircle(child: ChatMenu(coupleId: widget.coupleId)),
           ],
         ),
       ),

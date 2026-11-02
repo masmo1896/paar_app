@@ -12,6 +12,7 @@ import '../utils/dates.dart';
 import '../widgets/app_lock.dart';
 import '../widgets/who.dart';
 import 'albums_screen.dart';
+import 'chat_media_screen.dart';
 import 'countdown_screen.dart';
 
 /// "Wir"-Seite: zwei Füchse auf der Brücke, eure Namen und darunter eure
@@ -184,7 +185,8 @@ Future<void> _editNickname(BuildContext context, String current) async {
   if (name != null) await CoupleService.instance.setPartnerNickname(name);
 }
 
-/// Alle Alben als Ordner: schräge Polaroids im Raster, am Ende "Neues Album".
+/// Alle Alben als Ordner: schräge Polaroids im Raster. Vorne der feste Ordner
+/// "Aus dem Chat", am Ende "Neues Album".
 class _Memories extends StatelessWidget {
   const _Memories({required this.couple});
 
@@ -230,6 +232,8 @@ class _Memories extends StatelessWidget {
               });
             const tilts = [-0.035, 0.026, -0.017, 0.02, -0.028, 0.012];
             final tiles = [
+              // Fester Ordner mit allen Fotos und Videos aus dem Chat.
+              _ChatMediaPolaroid(coupleId: couple.coupleId),
               for (final album in albums)
                 _Polaroid(album: album, onTap: () => _open(context, album.id)),
               _Polaroid(onTap: () => _create(context)),
@@ -256,15 +260,63 @@ class _Memories extends StatelessWidget {
   }
 }
 
-class _Polaroid extends StatelessWidget {
-  const _Polaroid({this.album, required this.onTap});
+/// Ordner "Aus dem Chat": Titelbild ist das neueste Foto aus dem Chat.
+class _ChatMediaPolaroid extends StatefulWidget {
+  const _ChatMediaPolaroid({required this.coupleId});
 
-  final Album? album; // null = leeres Feld "Neues Album"
+  final String coupleId;
+
+  @override
+  State<_ChatMediaPolaroid> createState() => _ChatMediaPolaroidState();
+}
+
+class _ChatMediaPolaroidState extends State<_ChatMediaPolaroid> {
+  late final _media = chatMediaStream(widget.coupleId);
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<List<ChatMedia>>(
+    stream: _media,
+    builder: (context, snap) {
+      final media = snap.data ?? const [];
+      final cover = media.where((m) => !m.isVideo).firstOrNull?.url;
+      return Semantics(
+        button: true,
+        label: 'Ordner Aus dem Chat, ${media.length} Fotos und Videos',
+        child: _Polaroid(
+          name: 'Aus dem Chat',
+          cover: cover,
+          icon: Icons.chat_bubble_outline_rounded,
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => ChatMediaScreen(coupleId: widget.coupleId),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _Polaroid extends StatelessWidget {
+  const _Polaroid({
+    this.album,
+    required this.onTap,
+    this.name,
+    this.cover,
+    this.icon,
+  });
+
+  final Album? album; // null = leeres Feld "Neues Album" (oder eigener Ordner)
   final VoidCallback onTap;
+
+  // Für Ordner ohne Album (z. B. "Aus dem Chat"): Name, Titelbild, Symbol.
+  final String? name;
+  final String? cover;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
-    final cover = album?.coverUrl;
+    final cover = album?.coverUrl ?? this.cover;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -294,14 +346,15 @@ class _Polaroid extends StatelessWidget {
                         errorBuilder: (_, _, _) => const SizedBox.shrink(),
                       )
                     : Icon(
-                        album == null ? Icons.add : Icons.photo_outlined,
+                        icon ??
+                            (album == null ? Icons.add : Icons.photo_outlined),
                         color: Kitsune.paper,
                       ),
               ),
             ),
             const SizedBox(height: 5),
             Text(
-              album?.name ?? 'Neues Album',
+              album?.name ?? name ?? 'Neues Album',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTheme.serif(size: 11.5, color: Kitsune.night),

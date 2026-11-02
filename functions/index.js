@@ -77,7 +77,7 @@ exports.onMessage = onDocumentCreated(
   },
 );
 
-// Neue Smiley-Reaktion auf eine eigene Nachricht
+// Neues Like (❤️) oder andere Smiley-Reaktion auf eine eigene Nachricht
 exports.onReaction = onDocumentUpdated(
   { document: 'couples/{coupleId}/messages/{id}', region: REGION },
   async (event) => {
@@ -91,7 +91,9 @@ exports.onReaction = onDocumentUpdated(
       if (was[uid] === emoji || uid === after.senderId) continue;
       await notify(after.senderId, {
         title: await nameOf(uid, after.senderId),
-        body: `${emoji} auf: ${preview(after)}`,
+        body: emoji === '❤️'
+          ? `❤️ gefällt deine Nachricht: ${preview(after)}`
+          : `hat mit ${emoji} reagiert: ${preview(after)}`,
         type: 'chat',
       });
     }

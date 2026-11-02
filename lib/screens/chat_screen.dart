@@ -628,6 +628,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ),
             ),
           ),
+          // "schreibt…"-Blase direkt unter der letzten Nachricht.
+          TypingBubble(coupleId: widget.coupleId),
           if (_uploading) const LinearProgressIndicator(),
           if (_editingId != null)
             _EditBanner(

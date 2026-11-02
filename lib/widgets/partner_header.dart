@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/couple_service.dart';
 import '../services/push_service.dart';
+import '../theme.dart';
+import 'fox_bubble.dart';
 import 'who.dart';
 
 /// Rundes Profilbild; ohne Bild wird der erste Buchstabe des Namens gezeigt.
@@ -85,8 +88,6 @@ class PartnerTitle extends StatelessWidget {
                           ],
                         ),
                       ),
-                      if (partner['uid'] case final String uid)
-                        _TypingIndicator(coupleId: coupleId, partnerUid: uid),
                     ],
                   ),
                 ),
@@ -126,61 +127,154 @@ class PartnerTitle extends StatelessWidget {
   }
 }
 
-/// Kleines "schreibt…" unter dem Namen, solange die andere Person tippt.
+/// "schreibt…"-Blase unten im Chat, solange die andere Person tippt: eine kleine
+/// Papier-Sprechblase mit Fuchsohren und drei hüpfenden Punkten.
 /// Ein Tipp-Signal gilt 8 Sekunden; ein Timer prüft das regelmässig nach,
-/// damit die Anzeige auch verschwindet, wenn kein "fertig"-Signal mehr kommt.
-class _TypingIndicator extends StatefulWidget {
-  const _TypingIndicator({required this.coupleId, required this.partnerUid});
+/// damit die Blase auch verschwindet, wenn kein "fertig"-Signal mehr kommt.
+class TypingBubble extends StatefulWidget {
+  const TypingBubble({super.key, required this.coupleId});
 
   final String coupleId;
-  final String partnerUid;
 
   @override
-  State<_TypingIndicator> createState() => _TypingIndicatorState();
+  State<TypingBubble> createState() => _TypingBubbleState();
 }
 
-class _TypingIndicatorState extends State<_TypingIndicator> {
+class _TypingBubbleState extends State<TypingBubble> {
   static const _validFor = Duration(seconds: 8);
-  late final Stream<DateTime?> _since = CoupleService.instance.typingSince(
-    widget.coupleId,
-    widget.partnerUid,
-  );
+  StreamSubscription<Map<String, dynamic>?>? _partnerSub;
+  StreamSubscription<DateTime?>? _typingSub;
+  String? _partnerUid;
+  DateTime? _since;
   Timer? _tick;
 
   @override
   void initState() {
     super.initState();
+    _partnerSub = CoupleService.instance.partnerStream(widget.coupleId).listen((
+      partner,
+    ) {
+      final uid = partner?['uid'] as String?;
+      if (uid == _partnerUid) return;
+      _partnerUid = uid;
+      _typingSub?.cancel();
+      _typingSub = uid == null
+          ? null
+          : CoupleService.instance
+                .typingSince(widget.coupleId, uid)
+                .listen((since) => setState(() => _since = since));
+    });
     _tick = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (mounted) setState(() {});
+      if (mounted && _since != null) setState(() {});
     });
   }
 
   @override
   void dispose() {
     _tick?.cancel();
+    _partnerSub?.cancel();
+    _typingSub?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<DateTime?>(
-      stream: _since,
-      builder: (context, snap) {
-        final since = snap.data;
-        final typing =
-            since != null && DateTime.now().difference(since) < _validFor;
-        if (!typing) return const SizedBox.shrink();
-        return Text(
-          'schreibt…',
-          style: TextStyle(
-            fontSize: 13,
-            fontStyle: FontStyle.italic,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-        );
-      },
+    final since = _since;
+    final typing =
+        since != null && DateTime.now().difference(since) < _validFor;
+    // Sanft ein- und ausblenden, statt die Nachrichten ruckartig zu verschieben.
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+      alignment: Alignment.bottomLeft,
+      child: !typing
+          ? const SizedBox(width: double.infinity)
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Semantics(
+                  liveRegion: true,
+                  label: 'schreibt gerade',
+                  child: FoxBubble(
+                    color: Kitsune.paper,
+                    isMine: false,
+                    child: const Padding(
+                      padding: EdgeInsets.fromLTRB(14, 9, 14, 9),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _BouncingDots(),
+                          SizedBox(width: 8),
+                          Text(
+                            'schreibt…',
+                            style: TextStyle(
+                              color: Kitsune.inkSoft,
+                              fontSize: 14,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
     );
   }
+}
+
+/// Drei Punkte, die nacheinander hüpfen (rot, wie die Laternen).
+class _BouncingDots extends StatefulWidget {
+  const _BouncingDots();
+
+  @override
+  State<_BouncingDots> createState() => _BouncingDotsState();
+}
+
+class _BouncingDotsState extends State<_BouncingDots>
+    with SingleTickerProviderStateMixin {
+  late final _anim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (context, _) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < 3; i++) ...[
+            if (i > 0) const SizedBox(width: 4),
+            Transform.translate(
+              // Jeder Punkt startet etwas später; hüpft im ersten Drittel hoch und runter.
+              offset: Offset(0, -4 * _hop((_anim.value - i * 0.15) % 1.0)),
+              child: Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: i == 1 ? Kitsune.plum : Kitsune.lantern,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static double _hop(double t) =>
+      t < 0.35 ? math.sin(t / 0.35 * math.pi) : 0.0;
 }
 
 /// ⋮-Menü oben rechts: eigenes Profilbild, eigener Name, Abmelden.

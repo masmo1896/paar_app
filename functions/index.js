@@ -187,6 +187,61 @@ exports.onLantern = onDocumentCreated(
   },
 );
 
+// Frage des Tages: Schatz hat geantwortet.
+exports.onDailyAnswer = onDocumentCreated(
+  { document: 'couples/{coupleId}/days/{day}/answers/{uid}', region: REGION },
+  async (event) => {
+    const { coupleId, day, uid } = event.params;
+    const to = await partnerOf(coupleId, uid);
+    if (!to) return;
+    const name = await nameOf(uid, to);
+    const partnerDone = (await db.doc(`couples/${coupleId}/days/${day}/answers/${to}`).get()).exists;
+    await notify(to, {
+      title: '💬 Frage des Tages',
+      body: partnerDone
+        ? `${name} hat auch geantwortet – jetzt könnt ihr eure Antworten lesen.`
+        : `${name} hat geantwortet – jetzt bist du dran!`,
+      type: 'us',
+    });
+  },
+);
+
+/** "24.12.2026" in Schweizer Zeit. */
+const swissDate = (ts) => ts.toDate().toLocaleDateString('de-CH', { timeZone: 'Europe/Zurich' });
+
+// Neuer Liebesbrief (der Text bleibt bis zum Datum verschlossen).
+exports.onLetter = onDocumentCreated(
+  { document: 'couples/{coupleId}/letters/{id}', region: REGION },
+  async (event) => {
+    const l = event.data.data();
+    await notify(l.to, {
+      title: `💌 ${await nameOf(l.from, l.to)} hat dir einen Brief geschrieben`,
+      body: `Er lässt sich am ${swissDate(l.openAt)} öffnen.`,
+      type: 'us',
+    });
+  },
+);
+
+// Jeden Morgen um 8 Uhr: Briefe, die sich seit gestern öffnen lassen.
+exports.letterReminder = onSchedule(
+  { schedule: 'every day 08:00', timeZone: 'Europe/Zurich', region: REGION },
+  async () => {
+    const now = Date.now();
+    const snap = await db.collectionGroup('letters').get();
+    for (const doc of snap.docs) {
+      const l = doc.data();
+      if (l.openedAt || !l.openAt) continue;
+      const openAt = l.openAt.toMillis();
+      if (openAt > now || openAt <= now - 24 * 60 * 60 * 1000) continue;
+      await notify(l.to, {
+        title: '💌 Ein Brief wartet auf dich',
+        body: `Heute darfst du den Brief von ${await nameOf(l.from, l.to)} öffnen.`,
+        type: 'us',
+      });
+    }
+  },
+);
+
 // Jahrestag-Erinnerung: jeden Morgen um 8 Uhr (Schweizer Zeit) alle jährlichen
 // Countdowns prüfen und eine Woche vorher, am Vortag und am Tag selbst erinnern.
 // Wer auf der Wir-Seite "Jahrestag-Erinnerung" ausschaltet, bekommt nichts.

@@ -8,16 +8,17 @@ import '../services/couple_service.dart';
 import '../services/planner_service.dart';
 import '../services/push_service.dart';
 import '../theme.dart';
-import '../utils/dates.dart';
 import '../widgets/app_lock.dart';
 import '../widgets/who.dart';
 import 'albums_screen.dart';
 import 'chat_media_screen.dart';
 import 'countdown_screen.dart';
+import 'us_features.dart';
+import 'us_sections.dart';
 
-/// "Wir"-Seite: zwei Füchse auf der Brücke, eure Namen und darunter eure
-/// Erinnerungen (Alben) als Ordner. Die Einstellungen liegen hinter dem
-/// Zahnrad oben rechts auf einer eigenen Seite.
+/// "Wir"-Seite – das Herz eurer Beziehung: Füchse auf der Brücke, eure Namen
+/// mit Zusammen-seit-Zähler, Frage des Tages, Liebesbriefe, Date-Glas,
+/// Erinnerungen und private Geschenkideen. Einstellungen hinter dem Zahnrad.
 class UsScreen extends StatelessWidget {
   const UsScreen({super.key, required this.couple});
 
@@ -31,7 +32,8 @@ class UsScreen extends StatelessWidget {
         padding: EdgeInsets.zero,
         children: [
           SizedBox(
-            height: 236 + top,
+            // Gross, damit Mond und Füchse wirken (seitlich leicht beschnitten).
+            height: 320 + top,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -70,7 +72,15 @@ class UsScreen extends StatelessWidget {
               children: [
                 _Names(couple: couple),
                 const SizedBox(height: 18),
+                DailyQuestionCard(couple: couple),
+                const SizedBox(height: 14),
+                LoveLettersCard(couple: couple),
+                const SizedBox(height: 14),
+                DateJarCard(couple: couple),
+                const SizedBox(height: 22),
                 _Memories(couple: couple),
+                const SizedBox(height: 22),
+                GiftIdeasCard(couple: couple),
               ],
             ),
           ),
@@ -101,7 +111,8 @@ class SettingsScreen extends StatelessWidget {
   );
 }
 
-/// "Marc & Schatz" und darunter "zusammen seit …" (aus eurem Jahrestag-Countdown).
+/// "Marc & Schatz" und darunter der Zusammen-seit-Zähler (aus eurem
+/// Jahrestag-Countdown) – ohne Jahrestag ein Hinweis, ihn einzutragen.
 class _Names extends StatelessWidget {
   const _Names({required this.couple});
 
@@ -140,33 +151,29 @@ class _Names extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              GestureDetector(
-                onTap: since != null
-                    ? null
-                    : () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => CountdownScreen(couple: couple),
-                        ),
-                      ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    line(),
-                    const SizedBox(width: 8),
-                    Text(
-                      since == null
-                          ? 'Jahrestag als Countdown eintragen'
-                          : 'zusammen seit ${since.day}. ${monthsLong[since.month - 1]} ${since.year}',
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        color: Kitsune.mist,
-                      ),
+              if (since != null)
+                TogetherCounter(since: since)
+              else
+                GestureDetector(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => CountdownScreen(couple: couple),
                     ),
-                    const SizedBox(width: 8),
-                    line(),
-                  ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      line(),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Jahrestag als Countdown eintragen',
+                        style: TextStyle(fontSize: 12.5, color: Kitsune.mist),
+                      ),
+                      const SizedBox(width: 8),
+                      line(),
+                    ],
+                  ),
                 ),
-              ),
             ],
           );
         },
@@ -185,8 +192,8 @@ Future<void> _editNickname(BuildContext context, String current) async {
   if (name != null) await CoupleService.instance.setPartnerNickname(name);
 }
 
-/// Alle Alben als Ordner: schräge Polaroids im Raster. Vorne der feste Ordner
-/// "Aus dem Chat", am Ende "Neues Album".
+/// Erinnerungen kompakt: eine Reihe schräger Polaroids – vorne "Aus dem Chat",
+/// dann die neuesten Alben, am Ende "Neues Album". "Alle ›" öffnet die Alben-Seite.
 class _Memories extends StatelessWidget {
   const _Memories({required this.couple});
 
@@ -218,8 +225,22 @@ class _Memories extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Erinnerungen', style: AppTheme.serif(size: 18)),
-        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: Text('Erinnerungen', style: AppTheme.serif(size: 18)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => AlbumsScreen(couple: couple),
+                ),
+              ),
+              child: const Text('Alle ›'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
         StreamBuilder<List<Album>>(
           stream: AlbumService.instance.albums(couple.coupleId),
           builder: (context, snap) {
@@ -234,23 +255,27 @@ class _Memories extends StatelessWidget {
             final tiles = [
               // Fester Ordner mit allen Fotos und Videos aus dem Chat.
               _ChatMediaPolaroid(coupleId: couple.coupleId),
-              for (final album in albums)
+              // Nur die neuesten Alben; alle gibt es unter "Alle ›".
+              for (final album in albums.take(4))
                 _Polaroid(album: album, onTap: () => _open(context, album.id)),
               _Polaroid(onTap: () => _create(context)),
             ];
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: tiles.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: 16,
-                crossAxisSpacing: 10,
-                childAspectRatio: 0.82,
-              ),
-              itemBuilder: (context, i) => Transform.rotate(
-                angle: tilts[i % tilts.length],
-                child: tiles[i],
+            // Eine Reihe schräger Polaroids, seitlich wischbar.
+            return SizedBox(
+              height: 132,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                clipBehavior: Clip.none,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: tiles.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
+                itemBuilder: (context, i) => SizedBox(
+                  width: 94,
+                  child: Transform.rotate(
+                    angle: tilts[i % tilts.length],
+                    child: tiles[i],
+                  ),
+                ),
               ),
             );
           },

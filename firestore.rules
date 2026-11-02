@@ -35,6 +35,15 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == uid;
     }
 
+    // Geschenkideen: privat – nur die eigene Person darf sie lesen und schreiben.
+    match /users/{uid}/giftIdeas/{ideaId} {
+      allow read, delete: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 300 &&
+        request.resource.data.done is bool;
+    }
+
     match /couples/{coupleId} {
       allow read: if isMember(coupleId);
       // Neues Paar: nur man selbst als Mitglied.
@@ -116,6 +125,72 @@ service cloud.firestore {
           request.resource.data.createdBy == request.auth.uid;
         allow update: if isMember(coupleId) && validEvent(request.resource.data) &&
           request.resource.data.createdBy == resource.data.createdBy;
+      }
+
+      // Frage des Tages: am Tag steht nur, wer schon geantwortet hat.
+      // Man darf sich nur selbst in "answered" eintragen.
+      match /days/{day} {
+        allow read: if isMember(coupleId);
+        allow create, update: if isMember(coupleId) &&
+          request.resource.data.keys().hasOnly(['question', 'answered']) &&
+          request.resource.data.question is string &&
+          request.resource.data.question.size() <= 300 &&
+          request.resource.data.answered is list &&
+          request.resource.data.answered.size() <= 2 &&
+          request.resource.data.answered.toSet()
+            .difference(resource == null ? [].toSet() : resource.data.answered.toSet())
+            .hasOnly([request.auth.uid]);
+
+        // Antworten: die eigene immer; die des Schatzes erst, wenn die eigene existiert.
+        match /answers/{uid} {
+          allow read: if isMember(coupleId) && (request.auth.uid == uid ||
+            exists(/databases/$(database)/documents/couples/$(coupleId)/days/$(day)/answers/$(request.auth.uid)));
+          allow create, update: if isMember(coupleId) && request.auth.uid == uid &&
+            request.resource.data.keys().hasOnly(['text', 'at']) &&
+            request.resource.data.text is string &&
+            request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 1000;
+        }
+      }
+
+      // Liebesbriefe: den Umschlag sehen beide. Den Text gibt es erst ab openAt
+      // (die schreibende Person darf ihren Brief immer lesen).
+      match /letters/{letterId} {
+        allow read: if isMember(coupleId);
+        allow create: if isMember(coupleId) &&
+          request.resource.data.keys().hasOnly(['from', 'to', 'openAt', 'createdAt']) &&
+          request.resource.data.from == request.auth.uid &&
+          request.resource.data.to is string &&
+          request.resource.data.openAt is timestamp &&
+          request.resource.data.createdAt == request.time;
+        // Nur die Empfängerin darf "geöffnet" setzen – und erst ab openAt.
+        allow update: if isMember(coupleId) &&
+          resource.data.to == request.auth.uid &&
+          resource.data.openAt <= request.time &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['openedAt']);
+        allow delete: if isMember(coupleId) && resource.data.from == request.auth.uid;
+
+        match /content/{doc} {
+          allow read: if isMember(coupleId) && (
+            get(/databases/$(database)/documents/couples/$(coupleId)/letters/$(letterId)).data.from == request.auth.uid ||
+            get(/databases/$(database)/documents/couples/$(coupleId)/letters/$(letterId)).data.openAt <= request.time);
+          allow create: if isMember(coupleId) &&
+            getAfter(/databases/$(database)/documents/couples/$(coupleId)/letters/$(letterId)).data.from == request.auth.uid &&
+            request.resource.data.keys().hasOnly(['text']) &&
+            request.resource.data.text is string &&
+            request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 5000;
+          allow delete: if isMember(coupleId) &&
+            get(/databases/$(database)/documents/couples/$(coupleId)/letters/$(letterId)).data.from == request.auth.uid;
+        }
+      }
+
+      // Date-Glas: eigene Ideen; beide dürfen hineinlegen und herausnehmen.
+      match /dateIdeas/{ideaId} {
+        allow read, delete: if isMember(coupleId);
+        allow create: if isMember(coupleId) &&
+          request.resource.data.keys().hasOnly(['text', 'createdBy', 'createdAt']) &&
+          request.resource.data.createdBy == request.auth.uid &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 200;
       }
 
       // Laternenhimmel ("Ich denk an dich"): beide lesen, jede Person schickt nur

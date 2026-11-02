@@ -11,6 +11,7 @@ import '../utils/dates.dart';
 import '../widgets/lantern_sky.dart';
 import '../widgets/who.dart';
 import 'countdown_screen.dart';
+import 'us_features.dart';
 
 /// Startseite wie im Kitsune-Mockup: Begrüssung unter Laternen, nächster Countdown
 /// als Ticket, euer Laternenhimmel, die Termine von heute, die nächsten To-dos
@@ -43,6 +44,8 @@ class HomeScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Frage des Tages ganz oben; verschwindet, wenn beide geantwortet haben.
+                _QuestionOnTop(couple: couple),
                 _NextCountdown(couple: couple),
                 const SizedBox(height: 16),
                 LanternSky(couple: couple, active: active),
@@ -59,6 +62,19 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Frage des Tages mit Abstand darunter – nur solange sie offen ist.
+class _QuestionOnTop extends StatelessWidget {
+  const _QuestionOnTop({required this.couple});
+
+  final Couple couple;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 16),
+    child: DailyQuestionCard(couple: couple, hideWhenDone: true),
+  );
 }
 
 /// Laternen-Illustration mit "こんばんは / Guten Abend, Marc / Samstag, 31. Oktober".

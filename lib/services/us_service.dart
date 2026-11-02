@@ -1,0 +1,248 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../utils/dates.dart';
+
+// Datenmodell in Firestore (alles für die "Wir"-Seite):
+//   couples/{coupleId}/days/{2026-11-02}             -> { question, answered: [uid, …] }
+//   couples/{coupleId}/days/{tag}/answers/{uid}       -> { text, at }
+//       Die Antwort des Schatzes darf man erst lesen, wenn die eigene existiert
+//       (das prüfen die Firestore-Regeln, nicht nur die App).
+//   couples/{coupleId}/letters/{id}                   -> { from, to, openAt, createdAt, openedAt? }
+//   couples/{coupleId}/letters/{id}/content/text      -> { text }
+//       Den Text gibt der Server erst ab openAt heraus (Absender: immer).
+//   couples/{coupleId}/dateIdeas/{id}                 -> { text, createdBy, createdAt }
+//   users/{uid}/giftIdeas/{id}                        -> { text, done, createdAt } (nur für mich)
+
+class DayQuestion {
+  const DayQuestion({required this.question, required this.answered});
+
+  final String question;
+  final List<String> answered; // wer schon geantwortet hat
+}
+
+class Answer {
+  const Answer({required this.text, required this.at});
+
+  final String text;
+  final DateTime? at;
+}
+
+class Letter {
+  const Letter({
+    required this.id,
+    required this.from,
+    required this.to,
+    required this.openAt,
+    required this.createdAt,
+    this.openedAt,
+  });
+
+  factory Letter.fromDoc(DocumentSnapshot<Map<String, dynamic>> d) {
+    final m = d.data() ?? {};
+    return Letter(
+      id: d.id,
+      from: m['from'] as String? ?? '',
+      to: m['to'] as String? ?? '',
+      openAt: (m['openAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt: (m['createdAt'] as Timestamp?)?.toDate(),
+      openedAt: (m['openedAt'] as Timestamp?)?.toDate(),
+    );
+  }
+
+  final String id;
+  final String from;
+  final String to;
+  final DateTime openAt; // ab diesem Moment lässt sich der Brief öffnen
+  final DateTime? createdAt;
+  final DateTime? openedAt;
+
+  bool get canOpen => !DateTime.now().isBefore(openAt);
+}
+
+class Idea {
+  const Idea({required this.id, required this.text, this.done = false});
+
+  final String id;
+  final String text;
+  final bool done;
+}
+
+class UsService {
+  UsService._();
+  static final instance = UsService._();
+
+  final _db = FirebaseFirestore.instance;
+  String get _uid => FirebaseAuth.instance.currentUser!.uid;
+
+  DocumentReference<Map<String, dynamic>> _couple(String coupleId) =>
+      _db.collection('couples').doc(coupleId);
+
+  // --- Frage des Tages -------------------------------------------------------
+
+  DocumentReference<Map<String, dynamic>> _day(String coupleId, String day) =>
+      _couple(coupleId).collection('days').doc(day);
+
+  Stream<DayQuestion?> day(String coupleId, String day) =>
+      _day(coupleId, day).snapshots().map((d) {
+        final m = d.data();
+        if (m == null) return null;
+        return DayQuestion(
+          question: m['question'] as String? ?? '',
+          answered: List<String>.from(m['answered'] as List? ?? const []),
+        );
+      });
+
+  /// Antwort von [uid]. Die des Schatzes liefert der Server erst, wenn ich
+  /// selbst geantwortet habe – vorher kommt null (statt eines Fehlers).
+  Stream<Answer?> answer(String coupleId, String day, String uid) =>
+      _day(coupleId, day)
+          .collection('answers')
+          .doc(uid)
+          .snapshots()
+          .map((d) {
+            final m = d.data();
+            if (m == null) return null;
+            return Answer(
+              text: m['text'] as String? ?? '',
+              at: (m['at'] as Timestamp?)?.toDate(),
+            );
+          })
+          .handleError((_) {});
+
+  /// Eigene Antwort speichern. Zuerst die Antwort, dann "ich habe geantwortet"
+  /// am Tag eintragen – in einem Schritt (Batch).
+  Future<void> answerToday(String coupleId, String question, String text) {
+    final day = dayKey(today());
+    final batch = _db.batch()
+      ..set(_day(coupleId, day).collection('answers').doc(_uid), {
+        'text': text.trim(),
+        'at': FieldValue.serverTimestamp(),
+      })
+      ..set(_day(coupleId, day), {
+        'question': question,
+        'answered': FieldValue.arrayUnion([_uid]),
+      }, SetOptions(merge: true));
+    return batch.commit();
+  }
+
+  /// Frühere Tage (neueste zuerst), an denen mindestens jemand geantwortet hat.
+  Stream<List<(String day, DayQuestion q)>> archive(String coupleId) =>
+      _couple(coupleId)
+          .collection('days')
+          .orderBy(FieldPath.documentId, descending: true)
+          .limit(120)
+          .snapshots()
+          .map(
+            (s) => [
+              for (final d in s.docs)
+                (
+                  d.id,
+                  DayQuestion(
+                    question: d.data()['question'] as String? ?? '',
+                    answered: List<String>.from(
+                      d.data()['answered'] as List? ?? const [],
+                    ),
+                  ),
+                ),
+            ],
+          );
+
+  // --- Liebesbriefe ------------------------------------------------------------
+
+  CollectionReference<Map<String, dynamic>> _letters(String coupleId) =>
+      _couple(coupleId).collection('letters');
+
+  Stream<List<Letter>> letters(String coupleId) =>
+      _letters(coupleId)
+          .orderBy('openAt')
+          .snapshots()
+          .map((s) => s.docs.map(Letter.fromDoc).toList());
+
+  Future<void> sendLetter(
+    String coupleId, {
+    required String to,
+    required String text,
+    required DateTime openAt,
+  }) {
+    final ref = _letters(coupleId).doc();
+    final batch = _db.batch()
+      ..set(ref, {
+        'from': _uid,
+        'to': to,
+        'openAt': Timestamp.fromDate(openAt),
+        'createdAt': FieldValue.serverTimestamp(),
+      })
+      ..set(ref.collection('content').doc('text'), {'text': text.trim()});
+    return batch.commit();
+  }
+
+  /// Text eines Briefs (erst ab dem Öffnungs-Datum lesbar).
+  Future<String> letterText(String coupleId, String letterId) async {
+    final d = await _letters(coupleId)
+        .doc(letterId)
+        .collection('content')
+        .doc('text')
+        .get();
+    return d.data()?['text'] as String? ?? '';
+  }
+
+  Future<void> markLetterOpened(String coupleId, String letterId) =>
+      _letters(coupleId)
+          .doc(letterId)
+          .update({'openedAt': FieldValue.serverTimestamp()});
+
+  // --- Date-Glas ---------------------------------------------------------------
+
+  CollectionReference<Map<String, dynamic>> _dateIdeas(String coupleId) =>
+      _couple(coupleId).collection('dateIdeas');
+
+  Stream<List<Idea>> dateIdeas(String coupleId) => _dateIdeas(coupleId)
+      .snapshots()
+      .map(
+        (s) => [
+          for (final d in s.docs)
+            Idea(id: d.id, text: d.data()['text'] as String? ?? ''),
+        ],
+      );
+
+  Future<void> addDateIdea(String coupleId, String text) => _dateIdeas(coupleId)
+      .add({
+        'text': text.trim(),
+        'createdBy': _uid,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+  Future<void> deleteDateIdea(String coupleId, String id) =>
+      _dateIdeas(coupleId).doc(id).delete();
+
+  // --- Geschenkideen (nur für mich) -------------------------------------------
+
+  CollectionReference<Map<String, dynamic>> get _gifts =>
+      _db.collection('users').doc(_uid).collection('giftIdeas');
+
+  Stream<List<Idea>> giftIdeas() => _gifts
+      .orderBy('createdAt', descending: true)
+      .snapshots()
+      .map(
+        (s) => [
+          for (final d in s.docs)
+            Idea(
+              id: d.id,
+              text: d.data()['text'] as String? ?? '',
+              done: d.data()['done'] == true,
+            ),
+        ],
+      );
+
+  Future<void> addGiftIdea(String text) => _gifts.add({
+    'text': text.trim(),
+    'done': false,
+    'createdAt': FieldValue.serverTimestamp(),
+  });
+
+  Future<void> setGiftDone(String id, bool done) =>
+      _gifts.doc(id).update({'done': done});
+
+  Future<void> deleteGiftIdea(String id) => _gifts.doc(id).delete();
+}

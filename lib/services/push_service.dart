@@ -16,7 +16,7 @@ class PushService {
   static final instance = PushService._();
 
   /// Tab, der geöffnet werden soll, weil jemand eine Benachrichtigung angetippt hat.
-  /// 0 = Home (Laternen), 1 = Chat, 2 = Kalender, 3 = To-dos. Wer ihn auswertet, setzt ihn wieder auf null.
+  /// 0 = Home (Laternen), 1 = Chat, 2 = Kalender, 3 = To-dos, 4 = Wir. Wer ihn auswertet, setzt ihn wieder auf null.
   final requestedTab = ValueNotifier<int?>(null);
 
   final _db = FirebaseFirestore.instance;
@@ -32,6 +32,7 @@ class PushService {
     'chat' => 1,
     'event' => 2,
     'todo' => 3,
+    'us' => 4,
     _ => null,
   };
 

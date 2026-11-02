@@ -131,6 +131,41 @@ exports.onEvent = onDocumentCreated(
   },
 );
 
+/** "6.11." oder "6.11. – 9.11.", mit Uhrzeit falls vorhanden: "6.11. 07:40". */
+function eventWhen(e) {
+  const day = (key) => {
+    const [, m, d] = key.split('-');
+    return `${Number(d)}.${Number(m)}.`;
+  };
+  const start = `${day(e.startDate)}${e.startTime ? ` ${e.startTime}` : ''}`;
+  return e.endDate && e.endDate !== e.startDate ? `${start} – ${day(e.endDate)}` : start;
+}
+
+// Geänderter Termin (Titel, Datum oder Uhrzeit). Wer geändert hat, steht in
+// updatedBy; ältere App-Versionen setzen das nicht, dann wird nichts geschickt.
+exports.onEventChanged = onDocumentUpdated(
+  { document: 'couples/{coupleId}/events/{id}', region: REGION },
+  async (event) => {
+    const before = event.data.before.data();
+    const after = event.data.after.data();
+    const by = after.updatedBy;
+    // Nur echte Bearbeitungen: neuer Zeitstempel und etwas Sichtbares hat sich geändert.
+    if (!by || String(before.updatedAt) === String(after.updatedAt)) return;
+    const keys = ['title', 'startDate', 'endDate', 'startTime', 'endTime'];
+    if (keys.every((k) => (before[k] ?? null) === (after[k] ?? null))) return;
+    const to = await partnerOf(event.params.coupleId, by);
+    if (!to) return;
+    const moved = eventWhen(before) !== eventWhen(after);
+    await notify(to, {
+      title: `${await nameOf(by, to)} hat einen Termin geändert`,
+      body: moved
+        ? `${shorten(after.title)} · neu ${eventWhen(after)}`
+        : `${shorten(after.title)} · ${eventWhen(after)}`,
+      type: 'event',
+    });
+  },
+);
+
 // Jahrestag-Erinnerung: jeden Morgen um 8 Uhr (Schweizer Zeit) alle jährlichen
 // Countdowns prüfen und eine Woche vorher, am Vortag und am Tag selbst erinnern.
 // Wer auf der Wir-Seite "Jahrestag-Erinnerung" ausschaltet, bekommt nichts.

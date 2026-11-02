@@ -11,7 +11,7 @@ const both = 'both';
 //   couples/{coupleId}/todos/{id}   -> { title, assignee, due?, done, doneAt?, createdBy, createdAt }
 //   couples/{coupleId}/countdowns/{id} -> { title, date, emoji, yearly, createdBy, createdAt }
 //   couples/{coupleId}/events/{id}  -> { title, who, startDate, endDate, startTime?, endTime?,
-//                                        note?, createdBy, createdAt }
+//                                        note?, createdBy, createdAt, updatedBy?, updatedAt? }
 // Tage sind Texte wie "2026-11-06", Zeiten wie "07:40" (siehe utils/dates.dart).
 
 class Todo {
@@ -260,7 +260,15 @@ class PlannerService {
       'endTime': startTime == null || endTime == null ? null : timeKey(endTime),
       'note': note,
     };
-    if (id != null) return _events(coupleId).doc(id).update(data);
+    // Beim Ändern merken, wer es war – dann benachrichtigt die Cloud-Funktion
+    // die andere Person ("Marc hat einen Termin geändert").
+    if (id != null) {
+      return _events(coupleId).doc(id).update({
+        ...data,
+        'updatedBy': _uid,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
     return _events(coupleId).add({
       ...data,
       'createdBy': _uid,

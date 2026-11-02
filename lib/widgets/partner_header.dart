@@ -43,10 +43,10 @@ class Avatar extends StatelessWidget {
   }
 }
 
-/// Titel der Kopfzeile: Profilbild + Name der Partnerin/des Partners.
-/// Antippen zeigt das Profilbild gross. Solange niemand beigetreten ist: "Wir zwei".
-class PartnerTitle extends StatelessWidget {
-  const PartnerTitle({super.key, required this.coupleId});
+/// Profilbild deines Schatzes oben in der Chat-Kopfzeile (ohne Namen, damit der
+/// Header ruhig bleibt), mit hellem Papier-Ring. Antippen zeigt das Bild gross.
+class PartnerPhoto extends StatelessWidget {
+  const PartnerPhoto({super.key, required this.coupleId});
 
   final String coupleId;
 
@@ -56,42 +56,37 @@ class PartnerTitle extends StatelessWidget {
       stream: CoupleService.instance.partnerStream(coupleId),
       builder: (context, snap) {
         final partner = snap.data;
-        if (partner == null) return const Text('Wir zwei');
+        if (partner == null) return const SizedBox.shrink();
         final name = (partner['name'] as String?)?.trim();
         final displayName = name == null || name.isEmpty ? 'Dein Schatz' : name;
         final photoUrl = partner['photoUrl'] as String?;
 
-        return InkWell(
-          borderRadius: BorderRadius.circular(24),
-          onTap: photoUrl == null
-              ? null
-              : () => _showPhoto(context, displayName, photoUrl),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Avatar(name: displayName, photoUrl: photoUrl),
-                const SizedBox(width: 12),
-                Flexible(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        displayName,
-                        overflow: TextOverflow.ellipsis,
-                        // Schatten, damit der Name auf der Illustration lesbar bleibt.
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          shadows: const [
-                            Shadow(color: Color(0xFF0A1838), blurRadius: 10),
-                          ],
-                        ),
-                      ),
-                    ],
+        return Semantics(
+          label: 'Profilbild von $displayName',
+          button: photoUrl != null,
+          child: GestureDetector(
+            onTap: photoUrl == null
+                ? null
+                : () => _showPhoto(context, displayName, photoUrl),
+            child: Container(
+              width: HeaderCircle.size,
+              height: HeaderCircle.size,
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Kitsune.paper,
+                boxShadow: [
+                  BoxShadow(
+                    color: Kitsune.deep.withValues(alpha: 0.6),
+                    blurRadius: 8,
                   ),
-                ),
-              ],
+                ],
+              ),
+              child: Avatar(
+                name: displayName,
+                photoUrl: photoUrl,
+                radius: HeaderCircle.size / 2 - 2,
+              ),
             ),
           ),
         );
@@ -273,8 +268,36 @@ class _BouncingDotsState extends State<_BouncingDots>
     );
   }
 
-  static double _hop(double t) =>
-      t < 0.35 ? math.sin(t / 0.35 * math.pi) : 0.0;
+  static double _hop(double t) => t < 0.35 ? math.sin(t / 0.35 * math.pi) : 0.0;
+}
+
+/// Runder, dunkler Hintergrund für die Knöpfe in der Chat-Kopfzeile – genau so
+/// gross wie das Profilbild, damit alles auf einer Linie liegt.
+class HeaderCircle extends StatelessWidget {
+  const HeaderCircle({super.key, required this.child});
+
+  final Widget child;
+
+  static const size = 40.0;
+
+  /// Knöpfe darin ohne eigenen Innenabstand, damit sie den Kreis genau füllen.
+  static final buttonStyle = IconButton.styleFrom(
+    fixedSize: const Size.square(size),
+    minimumSize: const Size.square(size),
+    padding: EdgeInsets.zero,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: Kitsune.deep.withValues(alpha: 0.75),
+    ),
+    child: child,
+  );
 }
 
 /// ⋮-Menü oben rechts: eigenes Profilbild, eigener Name, Abmelden.
@@ -285,6 +308,8 @@ class ChatMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     return PopupMenuButton<String>(
       tooltip: 'Menü',
+      style: HeaderCircle.buttonStyle,
+      padding: EdgeInsets.zero,
       icon: const Icon(Icons.more_vert),
       onSelected: (value) => switch (value) {
         'photo' => _changePhoto(context),

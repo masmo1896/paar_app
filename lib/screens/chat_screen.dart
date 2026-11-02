@@ -57,6 +57,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String? _newestId;
   String? _highlightId; // kurz hervorgehobene Nachricht (nach Sprung zum Zitat)
 
+  // So hoch ist der Bereich oben, in dem die Sprechblasen ausblenden.
+  static const _fadeHeight = 56.0;
+
   // "schreibt…": höchstens alle 3 Sekunden ein Signal senden.
   DateTime? _lastTypingSignal;
 
@@ -503,33 +506,40 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         .snapshots();
 
     return Scaffold(
-      // Kopfzeile: Profilbild + Name deines Schatzes, rechts das ⋮-Menü.
-      // Kopfzeile mit Laternen: Profilbild + Name deines Schatzes, rechts das ⋮-Menü.
-      // Kopfzeile: Fuchs am roten Tor unter dem Mond, Name unten im Bild.
-      // Bewusst niedrig gehalten, damit die Nachrichten genug Platz haben.
-      appBar: kitsuneAppBar(
-        art: KitsuneArt.fox,
-        // Ausschnitt: unterer Teil des Mondes, Fuchs und Tor.
-        artAlignment: const Alignment(0, 0.5),
-        kana: '',
-        title: PartnerTitle(coupleId: widget.coupleId),
-        titleAtBottom: true,
-        actions: [
-          IconButton(
-            tooltip: 'Nachrichten suchen',
-            icon: const Icon(Icons.search_rounded),
-            onPressed: _openSearch,
-          ),
-          const ChatMenu(),
-        ],
-        height: 80,
-        leading: widget.onBack == null
-            ? null
-            : IconButton(
-                tooltip: 'Zurück',
-                icon: const Icon(Icons.arrow_back_rounded),
-                onPressed: widget.onBack,
+      // Schlichte, niedrige Kopfzeile ohne Illustration, damit möglichst viel
+      // vom Chat zu sehen ist. Zurück, Profilbild, Suche und ⋮-Menü sind gleich
+      // grosse Kreise auf einer Linie, mit gleichem Rand links und rechts.
+      appBar: AppBar(
+        toolbarHeight: 56,
+        automaticallyImplyLeading: false,
+        titleSpacing: 12,
+        title: Row(
+          children: [
+            if (widget.onBack != null) ...[
+              HeaderCircle(
+                child: IconButton(
+                  tooltip: 'Zurück',
+                  style: HeaderCircle.buttonStyle,
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  onPressed: widget.onBack,
+                ),
               ),
+              const SizedBox(width: 10),
+            ],
+            PartnerPhoto(coupleId: widget.coupleId),
+            const Spacer(),
+            HeaderCircle(
+              child: IconButton(
+                tooltip: 'Nachrichten suchen',
+                style: HeaderCircle.buttonStyle,
+                icon: const Icon(Icons.search_rounded),
+                onPressed: _openSearch,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const HeaderCircle(child: ChatMenu()),
+          ],
+        ),
       ),
       body: Column(
         children: [
@@ -556,53 +566,69 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   _docs = docs;
                   return Stack(
                     children: [
-                      // reverse: true -> neueste Nachricht unten, Liste startet unten.
-                      ScrollablePositionedList.builder(
-                        reverse: true,
-                        itemScrollController: _itemScroll,
-                        itemPositionsListener: _itemPositions,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        itemCount: docs.length,
-                        itemBuilder: (context, i) {
-                          final doc = docs[i];
-                          final data = doc.data();
-                          final time = (data['createdAt'] as Timestamp?)
-                              ?.toDate();
-                          // Datumstrenner über der ersten Nachricht eines Tages
-                          // (die nächstältere Nachricht ist docs[i + 1]).
-                          final older = i + 1 < docs.length
-                              ? (docs[i + 1].data()['createdAt'] as Timestamp?)
-                                    ?.toDate()
-                              : null;
-                          final showDate =
-                              time != null &&
-                              (older == null || !_sameDay(time, older));
-                          return Column(
-                            children: [
-                              if (showDate) _DateChip(date: time),
-                              _SwipeToReply(
-                                enabled: data['type'] != 'deleted',
-                                onReply: () => _startReply(doc),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 300),
-                                  decoration: BoxDecoration(
-                                    color: doc.id == _highlightId
-                                        ? Theme.of(context)
-                                              .colorScheme
-                                              .secondary
-                                              .withValues(alpha: 0.25)
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(16),
+                      // Oben verblassen die Sprechblasen weich, bevor sie unter
+                      // der Kopfzeile verschwinden.
+                      ShaderMask(
+                        blendMode: BlendMode.dstIn,
+                        shaderCallback: (rect) => LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: const [Colors.transparent, Colors.white],
+                          stops: [0, (_fadeHeight / rect.height).clamp(0, 1)],
+                        ).createShader(rect),
+                        // reverse: true -> neueste Nachricht unten, Liste startet unten.
+                        child: ScrollablePositionedList.builder(
+                          reverse: true,
+                          itemScrollController: _itemScroll,
+                          itemPositionsListener: _itemPositions,
+                          // Oben Platz lassen, damit auch die älteste Nachricht
+                          // ganz aus dem Verblassen herausscrollen kann.
+                          padding: const EdgeInsets.fromLTRB(
+                            12,
+                            _fadeHeight,
+                            12,
+                            8,
+                          ),
+                          itemCount: docs.length,
+                          itemBuilder: (context, i) {
+                            final doc = docs[i];
+                            final data = doc.data();
+                            final time = (data['createdAt'] as Timestamp?)
+                                ?.toDate();
+                            // Datumstrenner über der ersten Nachricht eines Tages
+                            // (die nächstältere Nachricht ist docs[i + 1]).
+                            final older = i + 1 < docs.length
+                                ? (docs[i + 1].data()['createdAt']
+                                          as Timestamp?)
+                                      ?.toDate()
+                                : null;
+                            final showDate =
+                                time != null &&
+                                (older == null || !_sameDay(time, older));
+                            return Column(
+                              children: [
+                                if (showDate) _DateChip(date: time),
+                                _SwipeToReply(
+                                  enabled: data['type'] != 'deleted',
+                                  onReply: () => _startReply(doc),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 300),
+                                    decoration: BoxDecoration(
+                                      color: doc.id == _highlightId
+                                          ? Theme.of(context)
+                                                .colorScheme
+                                                .secondary
+                                                .withValues(alpha: 0.25)
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: _bubbleFor(doc, data, time),
                                   ),
-                                  child: _bubbleFor(doc, data, time),
                                 ),
-                              ),
-                            ],
-                          );
-                        },
+                              ],
+                            );
+                          },
+                        ),
                       ),
                       // "Nach unten"-Knopf mit Zähler, wenn man weiter oben liest.
                       if (!_atBottom)

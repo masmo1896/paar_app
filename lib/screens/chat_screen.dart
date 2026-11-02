@@ -7,6 +7,7 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../services/couple_service.dart';
 import '../theme.dart';
+import '../utils/dates.dart';
 import 'camera_page.dart';
 import 'search_screen.dart';
 import '../widgets/gif_picker.dart';
@@ -741,7 +742,7 @@ class _DateChip extends StatelessWidget {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final day = DateTime(date.year, date.month, date.day);
-    final diff = today.difference(day).inDays;
+    final diff = daysBetween(day, today);
     if (diff == 0) return 'Heute';
     if (diff == 1) return 'Gestern';
     final base =

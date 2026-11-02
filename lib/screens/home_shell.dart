@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -49,18 +51,40 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   // Akku: Im Hintergrund die Live-Verbindung zur Datenbank trennen. Sonst hält
   // die App die ganze Nacht Verbindungen offen. Benachrichtigungen kommen
   // trotzdem (die laufen über Google, nicht über diese Verbindung).
+  // Aber erst nach einer Gnadenfrist und wenn alles Gesendete angekommen ist –
+  // sonst bliebe eine Nachricht hängen, wenn man direkt danach sperrt.
+  Timer? _offlineTimer;
+  bool _offline = false;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final db = FirebaseFirestore.instance;
     if (state == AppLifecycleState.paused) {
-      db.disableNetwork();
+      _offlineTimer?.cancel();
+      _offlineTimer = Timer(const Duration(seconds: 20), () async {
+        try {
+          await db.waitForPendingWrites().timeout(const Duration(seconds: 40));
+        } catch (_) {
+          // Ohne Netz kommt es eh nicht an – dann bleibt es in der Warteschlange.
+        }
+        if (WidgetsBinding.instance.lifecycleState ==
+            AppLifecycleState.paused) {
+          _offline = true;
+          await db.disableNetwork();
+        }
+      });
     } else if (state == AppLifecycleState.resumed) {
-      db.enableNetwork();
+      _offlineTimer?.cancel();
+      if (_offline) {
+        _offline = false;
+        db.enableNetwork();
+      }
     }
   }
 
   @override
   void dispose() {
+    _offlineTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     PushService.instance.requestedTab.removeListener(_openRequestedTab);
     super.dispose();

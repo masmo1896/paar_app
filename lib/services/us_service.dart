@@ -1,8 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-import '../utils/dates.dart';
-
 import '../utils/shared_stream.dart';
 
 // Datenmodell in Firestore (alles für die "Wir"-Seite):
@@ -134,8 +132,15 @@ class UsService {
 
   /// Eigene Antwort speichern. Zuerst die Antwort, dann "ich habe geantwortet"
   /// am Tag eintragen – in einem Schritt (Batch).
-  Future<void> answerToday(String coupleId, String question, String text) {
-    final day = dayKey(today());
+  /// Antwort für [day] – den Tag, dessen Frage gerade angezeigt wird (nicht
+  /// "heute" beim Senden: wer um 23:59 tippt und um 0:01 sendet, beantwortet
+  /// sonst die falsche Frage).
+  Future<void> answerDay(
+    String coupleId,
+    String day,
+    String question,
+    String text,
+  ) {
     final batch = _db.batch()
       ..set(_day(coupleId, day).collection('answers').doc(_uid), {
         'text': text.trim(),

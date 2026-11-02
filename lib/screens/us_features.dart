@@ -41,22 +41,38 @@ class DailyQuestionCard extends StatefulWidget {
 class _DailyQuestionCardState extends State<DailyQuestionCard> {
   final _service = UsService.instance;
   final _input = TextEditingController();
-  final _day = dayKey(today());
-  final _question = todaysQuestion();
   bool _sending = false;
 
-  late final Stream<DayQuestion?> _dayStream = _service.day(
-    widget.couple.coupleId,
-    _day,
-  );
-  late final Stream<Answer?> _mine = _service.answer(
-    widget.couple.coupleId,
-    _day,
-    widget.couple.myUid,
-  );
+  // Der Tag kann wechseln, während die App offen bleibt (Mitternacht).
+  late String _day;
+  late String _question;
+  late Stream<DayQuestion?> _dayStream;
+  late Stream<Answer?> _mine;
+  Timer? _midnight;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDay();
+  }
+
+  void _loadDay() {
+    final now = today();
+    _day = dayKey(now);
+    _question = questionFor(now);
+    _dayStream = _service.day(widget.couple.coupleId, _day);
+    _mine = _service.answer(widget.couple.coupleId, _day, widget.couple.myUid);
+    // Kurz nach Mitternacht auf die neue Frage wechseln.
+    _midnight?.cancel();
+    final next = DateTime(now.year, now.month, now.day + 1, 0, 0, 5);
+    _midnight = Timer(next.difference(DateTime.now()), () {
+      if (mounted) setState(_loadDay);
+    });
+  }
 
   @override
   void dispose() {
+    _midnight?.cancel();
     _input.dispose();
     super.dispose();
   }
@@ -68,7 +84,7 @@ class _DailyQuestionCardState extends State<DailyQuestionCard> {
     HapticFeedback.lightImpact();
     setState(() => _sending = true);
     try {
-      await _service.answerToday(widget.couple.coupleId, _question, text);
+      await _service.answerDay(widget.couple.coupleId, _day, _question, text);
       _input.clear();
     } catch (e) {
       if (mounted) {
@@ -837,7 +853,7 @@ class _DateJarCardState extends State<DateJarCard>
     messenger.showSnackBar(
       SnackBar(content: Text('Im Kalender eingetragen: ${longDay(date)} 📅')),
     );
-    setState(() => _idea = null);
+    if (mounted) setState(() => _idea = null);
   }
 
   @override

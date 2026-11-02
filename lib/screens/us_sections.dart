@@ -82,7 +82,8 @@ class TogetherCounter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = today();
-    final totalDays = now.difference(since).inDays;
+    // Über Kalendertage (sonst fehlt nach der Zeitumstellung ein Tag).
+    final totalDays = daysBetween(since, now);
     final p = _ymd(since, now);
     final parts = [
       if (p.years > 0) _plural(p.years, 'Jahr', 'Jahre'),
@@ -158,7 +159,7 @@ List<({String title, DateTime date})> nextMilestones(
     5000,
     10000,
   ]) {
-    final date = since.add(Duration(days: d));
+    final date = DateTime(since.year, since.month, since.day + d);
     if (!date.isBefore(now)) list.add((title: '$d Tage', date: date));
   }
   for (var y = 1; y <= 60; y++) {
@@ -201,7 +202,7 @@ void _showMilestones(BuildContext context, DateTime since) {
                     Text(
                       m.date == now
                           ? 'heute! 🎉'
-                          : 'in ${m.date.difference(now).inDays} Tagen',
+                          : 'in ${daysBetween(now, m.date)} Tagen',
                       style: const TextStyle(color: Kitsune.aqua, fontSize: 13),
                     ),
                   ],

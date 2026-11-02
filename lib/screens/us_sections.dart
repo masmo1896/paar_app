@@ -21,28 +21,32 @@ class UsCard extends StatelessWidget {
   final Widget? trailing;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-    // Gleiches Nachtblau wie die Illustration oben, feiner heller Rand.
-    decoration: BoxDecoration(
-      color: Kitsune.deep,
+  // Material statt Container: Gleiches Nachtblau wie die Illustration oben,
+  // feiner heller Rand – und Listenzeilen darin zeigen ihren Tipp-Effekt.
+  Widget build(BuildContext context) => Material(
+    color: Kitsune.deep,
+    shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: Kitsune.paper.withValues(alpha: 0.14)),
+      side: BorderSide(color: Kitsune.paper.withValues(alpha: 0.14)),
     ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Hanko(stamp, size: 24),
-            const SizedBox(width: 10),
-            Expanded(child: Text(title, style: AppTheme.serif(size: 17))),
-            ?trailing,
-          ],
-        ),
-        const SizedBox(height: 12),
-        child,
-      ],
+    clipBehavior: Clip.antiAlias,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Hanko(stamp, size: 24),
+              const SizedBox(width: 10),
+              Expanded(child: Text(title, style: AppTheme.serif(size: 17))),
+              ?trailing,
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
     ),
   );
 }

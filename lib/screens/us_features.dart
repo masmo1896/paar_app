@@ -878,6 +878,11 @@ class _DateJarCardState extends State<DateJarCard>
               Expanded(
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 250),
+                  // Linksbündig statt (Standard) zentriert.
+                  layoutBuilder: (current, previous) => Stack(
+                    alignment: Alignment.centerLeft,
+                    children: [...previous, ?current],
+                  ),
                   child: idea == null
                       ? Column(
                           key: const ValueKey('leer'),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../config.dart';
+import '../theme.dart';
 
 /// Was im GIF-Fenster ausgewählt wurde: ein GIPHY-GIF (Link) oder "aus Galerie".
 sealed class GifChoice {}
@@ -16,7 +17,22 @@ class GiphyGif extends GifChoice {
 
 class GalleryGif extends GifChoice {}
 
-/// Unteres Fenster mit GIPHY-Suche und Knopf für GIFs aus der Galerie.
+/// Schnellauswahl über der Suche: Billies Lieblinge zuerst.
+/// (Anzeige, Suchbegriff bei GIPHY)
+const _gifTopics = [
+  ('🎀 Hello Kitty', 'hello kitty'),
+  ('🖤 Kuromi', 'kuromi'),
+  ('🩷 My Melody', 'my melody'),
+  ('☁️ Cinnamoroll', 'cinnamoroll'),
+  ('🍮 Pompompurin', 'pompompurin'),
+  ('🌸 Anime Liebe', 'anime love'),
+  ('🥺 Kawaii', 'kawaii cute'),
+  ('🦊 Fuchs', 'cute fox'),
+  ('✨ Beliebt', ''),
+];
+
+/// Unteres Fenster mit Schnellauswahl (Hello Kitty, Kuromi …), GIPHY-Suche
+/// und Knopf für GIFs aus der Galerie.
 class GifPickerSheet extends StatefulWidget {
   const GifPickerSheet({super.key});
 
@@ -38,15 +54,24 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
   List<({String preview, String full})> _results = const [];
   bool _loading = false;
   String? _error;
+  int? _topic = 0; // gewählte Schnellauswahl (null = eigene Suche)
 
   @override
   void initState() {
     super.initState();
-    if (giphyApiKey.isNotEmpty) _load(''); // zuerst die aktuell beliebten GIFs
+    // Hello Kitty zuerst.
+    if (giphyApiKey.isNotEmpty) _load(_gifTopics.first.$2);
+  }
+
+  void _pickTopic(int i) {
+    _search.clear();
+    setState(() => _topic = i);
+    _load(_gifTopics[i].$2);
   }
 
   // Erst suchen, wenn 400 ms nicht mehr getippt wurde (spart Anfragen).
   void _onChanged(String text) {
+    setState(() => _topic = text.trim().isEmpty ? null : -1);
     _debounce?.cancel();
     _debounce = Timer(
       const Duration(milliseconds: 400),
@@ -64,10 +89,11 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
       query.isEmpty ? '/v1/gifs/trending' : '/v1/gifs/search',
       {
         'api_key': giphyApiKey,
-        'limit': '30',
+        'limit': '36',
         'rating': 'pg-13',
         if (query.isNotEmpty) 'q': query,
-        if (query.isNotEmpty) 'lang': 'de',
+        // Englisch: Figuren wie Kuromi sind dort viel besser verschlagwortet.
+        if (query.isNotEmpty) 'lang': 'en',
       },
     );
     try {
@@ -124,16 +150,43 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
                 onChanged: _onChanged,
                 textInputAction: TextInputAction.search,
                 decoration: const InputDecoration(
-                  hintText: 'GIFs suchen, z. B. „kuss“',
+                  hintText: 'GIFs suchen, z. B. „kuromi hug“',
                   prefixIcon: Icon(Icons.search),
                 ),
               ),
+            if (giphyApiKey.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              // Schnellauswahl als wischbare Reihe.
+              SizedBox(
+                height: 38,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _gifTopics.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, i) {
+                    final selected = _topic == i;
+                    return ChoiceChip(
+                      label: Text(_gifTopics[i].$1),
+                      selected: selected,
+                      showCheckmark: false,
+                      selectedColor: Kitsune.lantern,
+                      labelStyle: TextStyle(
+                        color: selected ? Kitsune.paper : null,
+                        fontWeight: selected ? FontWeight.w600 : null,
+                      ),
+                      onSelected: (_) => _pickTopic(i),
+                    );
+                  },
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Expanded(
               child: giphyApiKey.isEmpty
                   ? Center(
                       child: Text(
-                        'Die GIF-Suche ist noch nicht eingerichtet.\n'
+                        'Die GIF-Suche (Hello Kitty, Kuromi …) braucht noch\n'
+                        'einen GIPHY-Schlüssel in lib/config.dart.\n'
                         'GIFs aus deiner Galerie kannst du trotzdem senden.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: scheme.onSurfaceVariant),

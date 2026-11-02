@@ -61,6 +61,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // So hoch ist der Bereich oben, in dem die Sprechblasen ausblenden.
   static const _fadeHeight = 56.0;
 
+  bool _attachOpen = false; // "+"-Popup offen?
+
   // "schreibt…": höchstens alle 3 Sekunden ein Signal senden.
   DateTime? _lastTypingSignal;
 
@@ -364,46 +366,35 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-  // Fragt: Kamera, Galerie oder GIF? Dann hochladen und senden.
-  Future<void> _sendPhoto() async {
-    final source = await showModalBottomSheet<Object>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Foto aufnehmen'),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Aus Galerie wählen'),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
-            ),
-            ListTile(
-              leading: const Icon(Icons.gif_box_outlined),
-              title: const Text('GIF senden'),
-              onTap: () => Navigator.pop(context, _gifOption),
-            ),
-          ],
-        ),
-      ),
-    );
+  // "+": kleines Popup über dem Knopf. Solange es offen ist, zeigt der Knopf "×".
+  Future<void> _openAttach(Rect anchor) async {
+    FocusScope.of(context).unfocus();
+    setState(() => _attachOpen = true);
+    final what = await _AttachPopup.show(context, anchor);
     if (!mounted) return;
-    if (source == _gifOption) return _sendGif();
-    if (source == ImageSource.camera) return _openCamera(CameraMode.photo);
-    if (source is! ImageSource) return;
-
-    await _upload(
-      () => CoupleService.instance.sendPhoto(widget.coupleId, source),
-      'Foto konnte nicht gesendet werden',
-    );
+    setState(() => _attachOpen = false);
+    if (what != null) await _attach(what);
   }
 
-  static const _gifOption = 'gif';
+  /// Eine Zeile im Popup wurde gewählt.
+  Future<void> _attach(_Attachment what) async {
+    switch (what) {
+      case _Attachment.gallery:
+        await _upload(
+          () => CoupleService.instance.sendPhoto(
+            widget.coupleId,
+            ImageSource.gallery,
+          ),
+          'Foto konnte nicht gesendet werden',
+        );
+      case _Attachment.camera:
+        await _openCamera(CameraMode.photo);
+      case _Attachment.video:
+        await _recordSelfie();
+      case _Attachment.gif:
+        await _sendGif();
+    }
+  }
 
   // GIF-Fenster öffnen: GIPHY-GIF direkt senden, Galerie-GIF erst hochladen.
   Future<void> _sendGif() async {
@@ -685,7 +676,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           _InputBar(
             controller: _input,
             onSend: _send,
-            onPhoto: _uploading ? null : _sendPhoto,
+            attachOpen: _attachOpen,
+            onAttach: _uploading ? null : _openAttach,
             recordingFor: _recordingFor,
             onRecordingChanged: (d) => setState(() => _recordingFor = d),
             onVoiceRecorded: _sendVoice,
@@ -1388,7 +1380,8 @@ class _InputBar extends StatelessWidget {
   const _InputBar({
     required this.controller,
     required this.onSend,
-    required this.onPhoto,
+    required this.attachOpen,
+    required this.onAttach,
     required this.recordingFor,
     required this.onRecordingChanged,
     required this.onVoiceRecorded,
@@ -1397,7 +1390,8 @@ class _InputBar extends StatelessWidget {
 
   final TextEditingController controller;
   final VoidCallback onSend;
-  final VoidCallback? onPhoto; // null = gerade wird hochgeladen
+  final bool attachOpen; // "+"-Popup offen -> Knopf zeigt "×"
+  final ValueChanged<Rect>? onAttach; // null = gerade wird hochgeladen
   final Duration? recordingFor; // null = keine Aufnahme
   final ValueChanged<Duration?> onRecordingChanged;
   final void Function(String path, Duration duration) onVoiceRecorded;
@@ -1417,10 +1411,25 @@ class _InputBar extends StatelessWidget {
             final hasText = value.text.trim().isNotEmpty;
             return Row(
               children: [
-                IconButton(
-                  tooltip: 'Foto senden',
-                  onPressed: recording == null ? onPhoto : null,
-                  icon: const Icon(Icons.photo_camera_outlined),
+                // "+" wie bei Signal; dreht sich zum "×", solange das Popup offen ist.
+                Builder(
+                  builder: (buttonContext) => IconButton(
+                    tooltip: 'Anhang senden',
+                    onPressed: recording == null && onAttach != null
+                        ? () {
+                            final box =
+                                buttonContext.findRenderObject()! as RenderBox;
+                            onAttach!(
+                              box.localToGlobal(Offset.zero) & box.size,
+                            );
+                          }
+                        : null,
+                    icon: AnimatedRotation(
+                      turns: attachOpen ? 0.125 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: const Icon(Icons.add_rounded, size: 28),
+                    ),
+                  ),
                 ),
                 Expanded(
                   child: recording != null
@@ -1505,6 +1514,105 @@ class _InputBar extends StatelessWidget {
           },
         ),
       ),
+    );
+  }
+}
+
+enum _Attachment { gallery, camera, video, gif }
+
+/// Schlichtes Popup über dem "+": helle Papierkarte mit vier Zeilen.
+/// Geht aus der Ecke beim Knopf auf; Tippen daneben schliesst es.
+class _AttachPopup extends StatelessWidget {
+  const _AttachPopup({required this.anchor});
+
+  final Rect anchor;
+
+  static Future<_Attachment?> show(BuildContext context, Rect anchor) =>
+      showGeneralDialog<_Attachment>(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: 'Schliessen',
+        barrierColor: Colors.black26,
+        transitionDuration: const Duration(milliseconds: 180),
+        pageBuilder: (_, _, _) => _AttachPopup(anchor: anchor),
+        transitionBuilder: (_, animation, _, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              scale: Tween(begin: 0.85, end: 1.0).animate(curved),
+              alignment: Alignment.bottomLeft,
+              child: child,
+            ),
+          );
+        },
+      );
+
+  static const _items = [
+    (_Attachment.gallery, Icons.photo_library_outlined, 'Galerie'),
+    (_Attachment.camera, Icons.photo_camera_outlined, 'Kamera'),
+    (_Attachment.video, Icons.videocam_outlined, 'Video'),
+    (_Attachment.gif, Icons.gif_box_outlined, 'GIF'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    return Stack(
+      children: [
+        Positioned(
+          left: anchor.left + 8,
+          bottom: screen.height - anchor.top + 6,
+          child: Material(
+            color: Kitsune.paper,
+            elevation: 10,
+            shadowColor: Colors.black54,
+            borderRadius: BorderRadius.circular(16),
+            clipBehavior: Clip.antiAlias,
+            child: SizedBox(
+              width: 200,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final (i, (what, icon, label)) in _items.indexed) ...[
+                    if (i > 0)
+                      const Divider(
+                        height: 1,
+                        indent: 52,
+                        color: Kitsune.hairline,
+                      ),
+                    InkWell(
+                      onTap: () => Navigator.of(context).pop(what),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 13,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(icon, color: Kitsune.night, size: 22),
+                            const SizedBox(width: 14),
+                            Text(
+                              label,
+                              style: const TextStyle(
+                                color: Kitsune.night,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

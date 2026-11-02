@@ -1,7 +1,4 @@
-import 'dart:async';
-
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -32,10 +29,7 @@ class _HomeShellState extends State<HomeShell> {
   int _tab = 0;
   int _previousTab = 0; // Home
   final _myUid = FirebaseAuth.instance.currentUser!.uid;
-  StreamSubscription<RemoteMessage>? _foregroundSub;
   final _myProfile = CoupleService.instance.myProfileStream();
-
-  static const _tabNames = ['Home', 'Chat', 'Kalender', 'To-dos', 'Wir'];
 
   @override
   void initState() {
@@ -43,9 +37,8 @@ class _HomeShellState extends State<HomeShell> {
     final push = PushService.instance;
     push.startIfEnabled();
     push.requestedTab.addListener(_openRequestedTab);
-    // Benachrichtigung kommt, während die App offen ist: das System zeigt dann nichts.
-    // Darum ein kurzer Hinweis, wenn man nicht gerade im passenden Bereich ist.
-    _foregroundSub = FirebaseMessaging.onMessage.listen(_showInApp);
+    // Ist die App offen, zeigen wir bewusst keinen eigenen Hinweis – Benachrichtigungen
+    // erscheinen nur als normale System-Mitteilung, wenn die App im Hintergrund ist.
     // Falls die App durch eine Benachrichtigung gestartet wurde, noch bevor wir lauschten.
     WidgetsBinding.instance.addPostFrameCallback((_) => _openRequestedTab());
   }
@@ -53,7 +46,6 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void dispose() {
     PushService.instance.requestedTab.removeListener(_openRequestedTab);
-    _foregroundSub?.cancel();
     super.dispose();
   }
 
@@ -62,23 +54,6 @@ class _HomeShellState extends State<HomeShell> {
     if (tab == null) return;
     PushService.instance.requestedTab.value = null;
     if (mounted) _open(tab);
-  }
-
-  void _showInApp(RemoteMessage message) {
-    final tab = PushService.tabFor(message);
-    final note = message.notification;
-    if (!mounted || tab == null || tab == _tab || note == null) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            '${note.title ?? _tabNames[tab]}: ${note.body ?? ''}',
-            maxLines: 2,
-          ),
-          action: SnackBarAction(label: 'Ansehen', onPressed: () => _open(tab)),
-        ),
-      );
   }
 
   @override

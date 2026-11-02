@@ -42,8 +42,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // Nachrichten, die wir schon als gelesen gemeldet haben (verhindert doppelte Schreibvorgänge).
   final _markedRead = <String>{};
   bool _uploading = false;
-  Duration?
-  _recordingFor; // läuft gerade eine Sprachaufnahme? (für die Anzeige)
+  // Sprachaufnahme (halten, sperren, anhören); sendet über _sendVoice.
+  late final _voice = VoiceRecorderController(onSend: _sendVoice);
   // gesetzt = die nächste Textnachricht ist eine Antwort darauf
   ReplyTo? _replyTo;
   // gesetzt = das Eingabefeld bearbeitet diese eigene Nachricht
@@ -80,6 +80,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _itemPositions.itemPositions.removeListener(_onScroll);
     _input.removeListener(_onTextChanged);
     _stopTyping();
+    _voice.dispose();
     _input.dispose();
     super.dispose();
   }
@@ -438,10 +439,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _sendVoice(String path, Duration duration) => _upload(
-    () => CoupleService.instance.sendVoice(widget.coupleId, path, duration),
-    'Sprachnachricht konnte nicht gesendet werden',
-  );
+  void _sendVoice(String path, Duration duration, List<double> waveform) =>
+      _upload(
+        () => CoupleService.instance.sendVoice(
+          widget.coupleId,
+          path,
+          duration,
+          waveform: waveform,
+        ),
+        'Sprachnachricht konnte nicht gesendet werden',
+      );
 
   // Gemeinsamer Ablauf für Uploads: Ladebalken zeigen, Fehler als Hinweis anzeigen.
   Future<void> _upload(Future<void> Function() action, String errorText) async {
@@ -472,6 +479,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       },
       isGif: data['type'] == 'gif',
       audioUrl: data['type'] == 'audio' ? data['audioUrl'] as String? : null,
+      waveform: (data['waveform'] as List?)
+          ?.map((v) => (v as num).toDouble())
+          .toList(),
       videoUrl: data['type'] == 'video' ? data['videoUrl'] as String? : null,
       mediaDuration: Duration(milliseconds: data['durationMs'] as int? ?? 0),
       time: time,
@@ -678,9 +688,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             onSend: _send,
             attachOpen: _attachOpen,
             onAttach: _uploading ? null : _openAttach,
-            recordingFor: _recordingFor,
-            onRecordingChanged: (d) => setState(() => _recordingFor = d),
-            onVoiceRecorded: _sendVoice,
+            voice: _voice,
             onSelfie: _uploading ? null : _recordSelfie,
           ),
         ],
@@ -824,6 +832,7 @@ class _Bubble extends StatelessWidget {
     required this.imageUrl,
     required this.isGif,
     required this.audioUrl,
+    this.waveform,
     required this.videoUrl,
     required this.mediaDuration,
     required this.time,
@@ -849,6 +858,7 @@ class _Bubble extends StatelessWidget {
   final String? imageUrl; // gesetzt = Foto- oder GIF-Nachricht
   final bool isGif;
   final String? audioUrl; // gesetzt = Sprachnachricht
+  final List<double>? waveform; // Lautstärke-Balken der Sprachnachricht
   final String? videoUrl; // gesetzt = Selfie-Videobotschaft
   final Duration mediaDuration; // Länge von Sprach- bzw. Videonachricht
   final DateTime? time;
@@ -926,7 +936,14 @@ class _Bubble extends StatelessWidget {
           if (imageUrl case final url?)
             _ChatImage(url: url, label: isGif ? 'GIF' : 'Foto')
           else if (audioUrl case final url?)
-            AudioBubble(url: url, duration: mediaDuration, color: fg)
+            AudioBubble(
+              url: url,
+              duration: mediaDuration,
+              waveform: waveform,
+              color: fg,
+              // Eigene Blasen (aqua): Laternenrot, Blasen des Schatzes (Papier): Indigo.
+              accent: isMine ? Kitsune.lantern : Kitsune.indigo,
+            )
           else if (videoUrl case final url?)
             VideoBubble(url: url, duration: mediaDuration)
           else if (deleted)
@@ -1382,9 +1399,7 @@ class _InputBar extends StatelessWidget {
     required this.onSend,
     required this.attachOpen,
     required this.onAttach,
-    required this.recordingFor,
-    required this.onRecordingChanged,
-    required this.onVoiceRecorded,
+    required this.voice,
     required this.onSelfie,
   });
 
@@ -1392,38 +1407,66 @@ class _InputBar extends StatelessWidget {
   final VoidCallback onSend;
   final bool attachOpen; // "+"-Popup offen -> Knopf zeigt "×"
   final ValueChanged<Rect>? onAttach; // null = gerade wird hochgeladen
-  final Duration? recordingFor; // null = keine Aufnahme
-  final ValueChanged<Duration?> onRecordingChanged;
-  final void Function(String path, Duration duration) onVoiceRecorded;
+  final VoiceRecorderController voice;
   final VoidCallback? onSelfie; // null = gerade wird hochgeladen
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final recording = recordingFor;
     return SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
-        child: ValueListenableBuilder<TextEditingValue>(
-          valueListenable: controller,
-          builder: (context, value, _) {
-            final hasText = value.text.trim().isNotEmpty;
+        child: ListenableBuilder(
+          listenable: Listenable.merge([controller, voice]),
+          builder: (context, _) {
+            final hasText = controller.text.trim().isNotEmpty;
+            final state = voice.state;
+            // Mikrofon behält dank Schlüssel seinen Zustand, auch wenn sich
+            // die Knöpfe daneben ändern (sonst bricht das Halten ab).
+            final mic = VoiceRecordButton(
+              key: const ValueKey('mic'),
+              controller: voice,
+            );
+
+            // Aufnahme läuft: links Zeit + Live-Welle, rechts Mikrofon bzw. Senden.
+            if (state != VoiceState.idle) {
+              return Row(
+                children: [
+                  Expanded(child: VoiceRecordingBar(controller: voice)),
+                  const SizedBox(width: 8),
+                  if (state == VoiceState.holding)
+                    mic
+                  else
+                    IconButton.filled(
+                      tooltip: 'Sprachnachricht senden',
+                      onPressed: voice.send,
+                      style: IconButton.styleFrom(
+                        backgroundColor: Kitsune.lantern,
+                        foregroundColor: Kitsune.paper,
+                        minimumSize: const Size(52, 52),
+                      ),
+                      icon: const Icon(Icons.send_rounded),
+                    ),
+                ],
+              );
+            }
+
             return Row(
               children: [
                 // "+" wie bei Signal; dreht sich zum "×", solange das Popup offen ist.
                 Builder(
                   builder: (buttonContext) => IconButton(
                     tooltip: 'Anhang senden',
-                    onPressed: recording == null && onAttach != null
-                        ? () {
+                    onPressed: onAttach == null
+                        ? null
+                        : () {
                             final box =
                                 buttonContext.findRenderObject()! as RenderBox;
                             onAttach!(
                               box.localToGlobal(Offset.zero) & box.size,
                             );
-                          }
-                        : null,
+                          },
                     icon: AnimatedRotation(
                       turns: attachOpen ? 0.125 : 0,
                       duration: const Duration(milliseconds: 200),
@@ -1432,53 +1475,19 @@ class _InputBar extends StatelessWidget {
                   ),
                 ),
                 Expanded(
-                  child: recording != null
-                      // Während der Aufnahme: rote Anzeige mit Zeit statt Textfeld.
-                      ? Container(
-                          height: 48,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: scheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.fiber_manual_record,
-                                color: scheme.error,
-                                size: 14,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                formatDuration(recording),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const Spacer(),
-                              Text(
-                                'Loslassen zum Senden',
-                                style: TextStyle(
-                                  color: scheme.onSurfaceVariant,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : TextField(
-                          controller: controller,
-                          minLines: 1,
-                          maxLines: 5,
-                          textCapitalization: TextCapitalization.sentences,
-                          decoration: const InputDecoration(
-                            hintText: 'Nachricht',
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                          ),
-                        ),
+                  child: TextField(
+                    controller: controller,
+                    minLines: 1,
+                    maxLines: 5,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      hintText: 'Nachricht',
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 6),
                 if (hasText)
@@ -1492,22 +1501,17 @@ class _InputBar extends StatelessWidget {
                     icon: const Icon(Icons.send_rounded),
                   )
                 else ...[
-                  VoiceRecordButton(
-                    onElapsed: onRecordingChanged,
-                    onRecorded: onVoiceRecorded,
-                  ),
+                  mic,
                   // Eigener Knopf für Selfie-Videobotschaften, rechts neben dem Mikrofon.
-                  if (recording == null) ...[
-                    const SizedBox(width: 6),
-                    IconButton.filledTonal(
-                      tooltip: 'Selfie-Videobotschaft',
-                      onPressed: onSelfie,
-                      style: IconButton.styleFrom(
-                        minimumSize: const Size(48, 48),
-                      ),
-                      icon: const Icon(Icons.video_camera_front_outlined),
+                  const SizedBox(width: 6),
+                  IconButton.filledTonal(
+                    tooltip: 'Selfie-Videobotschaft',
+                    onPressed: onSelfie,
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(48, 48),
                     ),
-                  ],
+                    icon: const Icon(Icons.video_camera_front_outlined),
+                  ),
                 ],
               ],
             );

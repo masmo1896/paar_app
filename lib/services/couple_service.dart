@@ -41,7 +41,7 @@ class ReplyTo {
 //   invites/{code}                 -> { coupleId }
 //   couples/{coupleId}/messages/*  -> { type: 'text'|'image'|'gif'|'audio'|'video'|'deleted',
 //                                       editedAt? (Text wurde bearbeitet),
-//                                       text | imageUrl | gifUrl | audioUrl/videoUrl + durationMs,
+//                                       text | imageUrl | gifUrl | audioUrl/videoUrl + durationMs (+ waveform),
 //                                       senderId, createdAt, read, readAt,
 //                                       reactions: { uid: emoji }, replyTo? }
 // Dateien liegen in Firebase Storage unter couples/{coupleId}/images/, audio/ bzw. videos/.
@@ -365,8 +365,9 @@ class CoupleService {
   Future<void> sendVoice(
     String coupleId,
     String filePath,
-    Duration duration,
-  ) async {
+    Duration duration, {
+    List<double>? waveform,
+  }) async {
     final name = '${DateTime.now().millisecondsSinceEpoch}_$_uid.m4a';
     final ref = FirebaseStorage.instance.ref('couples/$coupleId/audio/$name');
     await ref.putFile(
@@ -377,6 +378,8 @@ class CoupleService {
       'type': 'audio',
       'audioUrl': await ref.getDownloadURL(),
       'durationMs': duration.inMilliseconds,
+      // Lautstärke-Balken für die Wellenform in der Blase (0–1).
+      'waveform': ?waveform,
       'senderId': _uid,
       'createdAt': FieldValue.serverTimestamp(),
       'read': false,

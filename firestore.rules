@@ -197,6 +197,130 @@ service cloud.firestore {
           request.resource.data.createdAt == request.time;
       }
 
+      // Schiffe versenken. Die Schüsse wertet die Cloud Function onBattleShot aus
+      // (Admin-Rechte, ignoriert diese Regeln). Flotten sieht nur die Besitzerin.
+      match /battleships/{gameId} {
+        function gamePath() {
+          return /databases/$(database)/documents/couples/$(coupleId)/battleships/$(gameId);
+        }
+        function game() { return get(gamePath()).data; }
+        function partnerIn(players) {
+          return players[0] == request.auth.uid ? players[1] : players[0];
+        }
+
+        allow read: if isMember(coupleId);
+        // Neues Spiel: man selbst zuerst in players, der Schatz als zweites.
+        allow create: if isMember(coupleId) &&
+          request.resource.data.keys().hasOnly(
+            ['status', 'players', 'turn', 'resolving', 'createdBy', 'createdAt', 'updatedAt', 'sunk']) &&
+          request.resource.data.status == 'setup' &&
+          request.resource.data.createdBy == request.auth.uid &&
+          request.resource.data.players is list &&
+          request.resource.data.players.size() == 2 &&
+          request.resource.data.players[0] == request.auth.uid &&
+          request.resource.data.players[1] != request.auth.uid &&
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.members
+            .hasAll(request.resource.data.players) &&
+          request.resource.data.turn == null &&
+          request.resource.data.resolving == false &&
+          request.resource.data.sunk == {} &&
+          request.resource.data.createdAt == request.time &&
+          request.resource.data.updatedAt == request.time;
+        allow update: if isMember(coupleId) && request.auth.uid in resource.data.players && (
+          // Schiessen: zusammen mit dem Schuss "Auswertung läuft" setzen (siehe shots).
+          (resource.data.status == 'playing' &&
+            resource.data.turn == request.auth.uid &&
+            resource.data.resolving == false &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['resolving']) &&
+            request.resource.data.resolving == true) ||
+          // Notausgang: hängt die Auswertung über eine Minute, darf man sie lösen.
+          (resource.data.resolving == true &&
+            request.time > resource.data.updatedAt + duration.value(60, 's') &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['resolving']) &&
+            request.resource.data.resolving == false) ||
+          // Aufgeben: der Schatz gewinnt.
+          (resource.data.status in ['setup', 'playing'] &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'winner', 'turn', 'updatedAt']) &&
+            request.resource.data.status == 'done' &&
+            request.resource.data.winner == partnerIn(resource.data.players) &&
+            request.resource.data.turn == null &&
+            request.resource.data.updatedAt == request.time)
+        );
+
+        // Eigene Flotte: nur man selbst liest und schreibt, nur vor Spielbeginn.
+        // Ob die Schiffe gültig liegen, prüft die Cloud Function onBattleFleet.
+        match /fleets/{uid} {
+          allow read: if request.auth.uid == uid && isMember(coupleId);
+          allow create, update: if request.auth.uid == uid && isMember(coupleId) &&
+            uid in game().players &&
+            game().status == 'setup' &&
+            request.resource.data.keys().hasOnly(['ships']) &&
+            request.resource.data.ships is list &&
+            request.resource.data.ships.size() == 5;
+        }
+
+        // Schüsse: nur wer am Zug ist, ein Feld nur einmal (ID by_x_y), kein Ändern/Löschen.
+        match /shots/{shotId} {
+          allow read: if isMember(coupleId);
+          allow create: if isMember(coupleId) &&
+            game().status == 'playing' &&
+            game().turn == request.auth.uid &&
+            game().resolving == false &&
+            getAfter(gamePath()).data.resolving == true &&
+            request.resource.data.keys().hasOnly(['by', 'x', 'y', 'at']) &&
+            request.resource.data.by == request.auth.uid &&
+            request.resource.data.x is int && request.resource.data.x >= 0 && request.resource.data.x <= 9 &&
+            request.resource.data.y is int && request.resource.data.y >= 0 && request.resource.data.y <= 9 &&
+            request.resource.data.at == request.time &&
+            shotId == request.auth.uid + '_' + string(request.resource.data.x) + '_' +
+              string(request.resource.data.y);
+        }
+      }
+
+      // Kreuzworträtsel, gemeinsam gelöst: abwechselnd ein Wort (oder ein Hinweis).
+      // Die Lösung steht im Dokument – ihr spielt zusammen, nicht gegeneinander.
+      match /crosswords/{gameId} {
+        function members() {
+          return get(/databases/$(database)/documents/couples/$(coupleId)).data.members;
+        }
+        allow read: if isMember(coupleId);
+        allow create: if isMember(coupleId) &&
+          request.resource.data.keys().hasOnly(
+            ['status', 'turn', 'createdBy', 'createdAt', 'updatedAt', 'size', 'words',
+             'solved', 'attempts', 'hintsUsed', 'revealed']) &&
+          request.resource.data.status == 'playing' &&
+          request.resource.data.createdBy == request.auth.uid &&
+          request.resource.data.turn == request.auth.uid &&
+          request.resource.data.size is int &&
+          request.resource.data.size >= 5 && request.resource.data.size <= 15 &&
+          request.resource.data.words is list &&
+          request.resource.data.words.size() >= 4 && request.resource.data.words.size() <= 20 &&
+          request.resource.data.solved == {} &&
+          request.resource.data.attempts == 0 &&
+          request.resource.data.hintsUsed == 0 &&
+          request.resource.data.revealed == [] &&
+          request.resource.data.createdAt == request.time &&
+          request.resource.data.updatedAt == request.time;
+        // Zug: nur wer dran ist; danach ist der Schatz dran. Gelöste Wörter bleiben gelöst.
+        allow update: if isMember(coupleId) &&
+          resource.data.status == 'playing' &&
+          resource.data.turn == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['solved', 'attempts', 'hintsUsed', 'revealed', 'turn', 'status', 'updatedAt']) &&
+          request.resource.data.status in ['playing', 'done'] &&
+          request.resource.data.turn != request.auth.uid &&
+          members().hasAny([request.resource.data.turn]) &&
+          request.resource.data.solved is map &&
+          request.resource.data.solved.diff(resource.data.solved).removedKeys().size() == 0 &&
+          request.resource.data.solved.diff(resource.data.solved).changedKeys().size() == 0 &&
+          request.resource.data.attempts is int &&
+          request.resource.data.attempts >= resource.data.attempts &&
+          request.resource.data.revealed is list &&
+          request.resource.data.revealed.hasAll(resource.data.revealed) &&
+          request.resource.data.updatedAt == request.time;
+      }
+
       // "schreibt…"-Anzeige: lesen beide, schreiben nur das eigene Dokument.
       match /typing/{uid} {
         allow read: if isMember(coupleId);

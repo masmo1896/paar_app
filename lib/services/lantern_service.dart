@@ -7,7 +7,8 @@ import '../utils/shared_stream.dart';
 //   couples/{coupleId}/lanterns/{id} -> { from: uid, createdAt }
 //   users/{uid}.lanternsSeenAt       -> bis wann ich die Laternen meines Schatzes gesehen habe
 
-/// Eine Laterne = "Ich denk an dich". Sie bleibt für immer im Laternenhimmel.
+/// Eine Laterne = "Ich denk an dich". Gespeichert bleibt sie für immer,
+/// am Himmel steht sie bis Mitternacht.
 class Lantern {
   const Lantern({required this.id, required this.from, required this.at});
 
@@ -32,27 +33,39 @@ class LanternService {
   CollectionReference<Map<String, dynamic>> _lanterns(String coupleId) =>
       _db.collection('couples').doc(coupleId).collection('lanterns');
 
-  /// Die neuesten Laternen zuerst.
-  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
-  Stream<List<Lantern>> lanterns(String coupleId) =>
-      SharedStreams.get('lanterns/$coupleId', () => _lanternsLive(coupleId));
+  /// Höchstens so viele Laternen zeigt der Himmel an einem Tag.
+  static const maxPerDay = 1000;
 
-  Stream<List<Lantern>> _lanternsLive(String coupleId) => _lanterns(coupleId)
-      .orderBy('createdAt', descending: true)
-      .limit(300)
-      .snapshots()
-      .map(
-        (snap) => [
-          for (final d in snap.docs)
-            Lantern(
-              id: d.id,
-              from: d.data()['from'] as String? ?? '',
-              at:
-                  (d.data()['createdAt'] as Timestamp?)?.toDate() ??
-                  DateTime.now(),
-            ),
-        ],
-      );
+  /// Die Laternen von heute (ab Mitternacht), die neuesten zuerst.
+  /// Jeden Tag beginnt der Himmel leer; die alten Laternen bleiben gespeichert.
+  /// Geteilt: alle Bildschirme nutzen dieselbe Verbindung (siehe SharedStreams).
+  Stream<List<Lantern>> lanterns(String coupleId) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return SharedStreams.get(
+      'lanterns/$coupleId/${today.toIso8601String()}',
+      () => _lanternsLive(coupleId, today),
+    );
+  }
+
+  Stream<List<Lantern>> _lanternsLive(String coupleId, DateTime since) =>
+      _lanterns(coupleId)
+          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(since))
+          .orderBy('createdAt', descending: true)
+          .limit(maxPerDay)
+          .snapshots()
+          .map(
+            (snap) => [
+              for (final d in snap.docs)
+                Lantern(
+                  id: d.id,
+                  from: d.data()['from'] as String? ?? '',
+                  at:
+                      (d.data()['createdAt'] as Timestamp?)?.toDate() ??
+                      DateTime.now(),
+                ),
+            ],
+          );
 
   /// Neue ID vorab holen – so weiss die Animation schon, wohin die Laterne fliegt.
   String newId(String coupleId) => _lanterns(coupleId).doc().id;

@@ -4,6 +4,7 @@ import '../theme.dart';
 import '../services/planner_service.dart';
 import '../utils/dates.dart';
 import '../widgets/who.dart';
+import 'countdown_screen.dart';
 
 /// Gemeinsamer Kalender: Monatsansicht, darunter die Termine (und fälligen Aufgaben)
 /// des gewählten Tages. Punkte unter den Zahlen zeigen, wem ein Termin gehört.
@@ -42,6 +43,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         titleText: monthsLong[_month.month - 1],
         actions: [
           for (final (tip, icon, onTap) in [
+            ('Countdowns', Icons.hourglass_bottom_rounded, _openCountdowns),
             (
               'Vorheriger Monat',
               Icons.chevron_left_rounded,
@@ -82,8 +84,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        tooltip: 'Termin hinzufügen',
-        onPressed: () => _editEvent(null),
+        tooltip: 'Termin oder Countdown hinzufügen',
+        onPressed: _add,
         child: const Icon(Icons.add),
       ),
     );
@@ -194,6 +196,45 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ],
       ),
     );
+  }
+
+  void _openCountdowns() => Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (_) => CountdownScreen(couple: couple)),
+  );
+
+  /// Plus-Knopf: neuer Termin oder neuer Countdown für den gewählten Tag.
+  Future<void> _add() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.event_rounded),
+              title: const Text('Neuer Termin'),
+              onTap: () => Navigator.pop(sheet, 'event'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.hourglass_bottom_rounded),
+              title: const Text('Neuer Countdown'),
+              subtitle: Text(
+                'Bis ${_selected.day}.${_selected.month}.${_selected.year}',
+              ),
+              onTap: () => Navigator.pop(sheet, 'countdown'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 'event') {
+      await _editEvent(null);
+    } else if (choice == 'countdown') {
+      await showCountdownForm(context, couple, date: _selected);
+    }
   }
 
   Future<void> _editEvent(CalEvent? event) => showFormSheet<void>(

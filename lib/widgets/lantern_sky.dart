@@ -36,6 +36,7 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
 
   final _service = LanternService.instance;
   StreamSubscription<List<Lantern>>? _lanternSub;
+  Timer? _midnight;
   StreamSubscription<Map<String, dynamic>?>? _profileSub;
   var _lanterns = <Lantern>[];
   bool _lanternsLoaded = false;
@@ -73,6 +74,21 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    _subscribeToday();
+    _profileSub = CoupleService.instance.myProfileStream().listen((me) {
+      // Nur übernehmen, wenn es neuer ist (lokal setzen wir es schon vorher).
+      final at = (me?['lanternsSeenAt'] as Timestamp?)?.toDate();
+      if (at != null && (_seenAt == null || at.isAfter(_seenAt!))) {
+        _seenAt = at;
+      }
+      _profileLoaded = true;
+      _maybeSendFox();
+    });
+  }
+
+  // Laternen von heute; um Mitternacht beginnt der Himmel wieder leer.
+  void _subscribeToday() {
+    _lanternSub?.cancel();
     _lanternSub = _service.lanterns(_coupleId).listen(
       (list) {
         setState(() {
@@ -84,15 +100,17 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
       // Z. B. keine Berechtigung: Himmel bleibt einfach leer.
       onError: (Object e) => debugPrint('Laternen nicht lesbar: $e'),
     );
-    _profileSub = CoupleService.instance.myProfileStream().listen((me) {
-      // Nur übernehmen, wenn es neuer ist (lokal setzen wir es schon vorher).
-      final at = (me?['lanternsSeenAt'] as Timestamp?)?.toDate();
-      if (at != null && (_seenAt == null || at.isAfter(_seenAt!))) {
-        _seenAt = at;
-      }
-      _profileLoaded = true;
-      _maybeSendFox();
-    });
+    final now = DateTime.now();
+    final midnight = DateTime(now.year, now.month, now.day + 1);
+    _midnight?.cancel();
+    _midnight = Timer(
+      midnight.difference(now) + const Duration(seconds: 1),
+      () {
+        if (!mounted) return;
+        setState(() => _lanterns = const []);
+        _subscribeToday();
+      },
+    );
   }
 
   // "Bewegung reduzieren" am Handy: Laternen schweben nicht.
@@ -114,6 +132,7 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _midnight?.cancel();
     _lanternSub?.cancel();
     _profileSub?.cancel();
     _float.dispose();

@@ -10,6 +10,7 @@ import '../services/planner_service.dart';
 import '../theme.dart';
 import '../utils/dates.dart';
 import '../utils/wisdom.dart';
+import '../widgets/game_tiles.dart';
 import '../widgets/lantern_sky.dart';
 import '../widgets/who.dart';
 import 'countdown_screen.dart';
@@ -17,7 +18,7 @@ import 'us_features.dart';
 import '../widgets/motion.dart';
 
 /// Startseite: Begrüssung unter Laternen, dann (1) ungelesene Nachricht,
-/// (2) euer Laternenhimmel, (3) Countdown-Ticket, (4) Frage des Tages,
+/// (2) euer Laternenhimmel, (3) Countdown-Ticket, Spiele, (4) Frage des Tages,
 /// danach die Termine von heute und die nächsten To-dos. Die Laternen-
 /// Illustration liegt gross im Hintergrund, läuft weich ausgeblendet hinter die
 /// Karten und wandert beim Scrollen etwas langsamer mit (Parallax).
@@ -84,6 +85,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 16),
                     // 3. Countdown
                     _NextCountdown(couple: couple),
+                    const SizedBox(height: 16),
+                    // Spiele; roter Punkt = du bist am Zug.
+                    GameTiles(couple: couple),
                     const SizedBox(height: 16),
                     // 4. Frage des Tages; verschwindet, wenn beide geantwortet haben.
                     _QuestionOnTop(couple: couple),

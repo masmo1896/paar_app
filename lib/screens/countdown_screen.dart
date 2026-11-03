@@ -81,11 +81,19 @@ class CountdownScreen extends StatelessWidget {
   }
 
   Future<void> _edit(BuildContext context, Countdown? countdown) =>
-      showFormSheet<void>(
-        context,
-        (_) => _CountdownForm(couple: couple, countdown: countdown),
-      );
+      showCountdownForm(context, couple, countdown: countdown);
 }
+
+/// Countdown anlegen oder bearbeiten (auch aus dem Kalender, dann mit [date]).
+Future<void> showCountdownForm(
+  BuildContext context,
+  Couple couple, {
+  Countdown? countdown,
+  DateTime? date,
+}) => showFormSheet<void>(
+  context,
+  (_) => _CountdownForm(couple: couple, countdown: countdown, date: date),
+);
 
 class _CountdownCard extends StatelessWidget {
   const _CountdownCard({
@@ -237,10 +245,17 @@ class _CountdownCard extends StatelessWidget {
 
 /// Formular zum Anlegen und Bearbeiten eines Countdowns.
 class _CountdownForm extends StatefulWidget {
-  const _CountdownForm({required this.couple, required this.countdown});
+  const _CountdownForm({
+    required this.couple,
+    required this.countdown,
+    this.date,
+  });
 
   final Couple couple;
   final Countdown? countdown;
+
+  /// Vorgewähltes Datum für einen neuen Countdown.
+  final DateTime? date;
 
   @override
   State<_CountdownForm> createState() => _CountdownFormState();
@@ -265,7 +280,9 @@ class _CountdownFormState extends State<_CountdownForm> {
   );
   late String _emoji = widget.countdown?.emoji ?? _emojis.first;
   late DateTime _date =
-      widget.countdown?.date ?? today().add(const Duration(days: 30));
+      widget.countdown?.date ??
+      widget.date ??
+      today().add(const Duration(days: 30));
   late bool _yearly = widget.countdown?.yearly ?? false;
   bool _saving = false;
 

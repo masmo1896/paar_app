@@ -1,10 +1,11 @@
 // Cloud-Funktionen: schicken Push-Benachrichtigungen an die andere Person.
 // Sie laufen bei Google (nicht auf dem Handy) und reagieren auf Änderungen in Firestore.
-const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { initializeApp } = require('firebase-admin/app');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
+const battleship = require('./battleship');
 
 initializeApp();
 const db = getFirestore();
@@ -290,5 +291,119 @@ exports.anniversaryReminder = onSchedule(
         await notify(uid, { title: `${c.emoji || '♥'} Jahrestag`, body, type: 'chat' });
       }
     }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Schiffe versenken. Jede Flotte kann nur ihre Besitzerin lesen; deshalb wertet
+// diese Funktion die Schüsse aus. Keine Push-Benachrichtigungen.
+
+// Eine Flotte wurde gespeichert: prüfen, und sobald beide da sind, geht's los.
+exports.onBattleFleet = onDocumentWritten(
+  { document: 'couples/{coupleId}/battleships/{gameId}/fleets/{uid}', region: REGION },
+  async (event) => {
+    const after = event.data.after;
+    if (!after.exists) return;
+    const { uid } = event.params;
+    const gameRef = after.ref.parent.parent;
+
+    const error = battleship.validateFleet(after.get('ships'));
+    const game = await gameRef.get();
+    const players = game.get('players') || [];
+    if (error || !game.exists || !players.includes(uid)) {
+      console.log('onBattleFleet: Flotte gelöscht –', error || 'gehört nicht zum Spiel');
+      await after.ref.delete();
+      return;
+    }
+
+    await db.runTransaction(async (tx) => {
+      const g = await tx.get(gameRef);
+      if (g.get('status') !== 'setup') return;
+      const ps = g.get('players') || [];
+      const fleets = await Promise.all(ps.map((p) => tx.get(gameRef.collection('fleets').doc(p))));
+      if (ps.length !== 2 || fleets.some((f) => !f.exists ||
+          battleship.validateFleet(f.get('ships')))) return;
+      tx.update(gameRef, {
+        status: 'playing',
+        turn: ps.find((p) => p !== g.get('createdBy')) || ps[0],
+        resolving: false,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+  },
+);
+
+// Ein Schuss wurde abgegeben: auswerten und den Spielstand weiterschreiben.
+exports.onBattleShot = onDocumentCreated(
+  { document: 'couples/{coupleId}/battleships/{gameId}/shots/{shotId}', region: REGION },
+  async (event) => {
+    const shotRef = event.data.ref;
+    const gameRef = shotRef.parent.parent;
+
+    await db.runTransaction(async (tx) => {
+      const shot = await tx.get(shotRef);
+      // Schon ausgewertet (Funktion lief doppelt) oder inzwischen gelöscht.
+      if (!shot.exists || shot.get('result')) return;
+      const game = await tx.get(gameRef);
+      if (!game.exists) {
+        tx.delete(shotRef);
+        return;
+      }
+      const { by, x, y } = shot.data();
+      const players = game.get('players') || [];
+      const enemy = players.find((p) => p !== by);
+      // Alle Lesezugriffe vor dem ersten Schreiben (Regel für Transaktionen).
+      const enemyFleet = enemy ? await tx.get(gameRef.collection('fleets').doc(enemy)) : null;
+      const myFleet = await tx.get(gameRef.collection('fleets').doc(by || '-'));
+      const mine = await tx.get(gameRef.collection('shots').where('by', '==', by));
+      const earlier = mine.docs.filter((d) => d.id !== shotRef.id).map((d) => d.data());
+
+      const reject = (why) => {
+        console.log('onBattleShot: Schuss gelöscht –', why);
+        tx.delete(shotRef);
+        tx.update(gameRef, { resolving: false, updatedAt: FieldValue.serverTimestamp() });
+      };
+      if (game.get('status') !== 'playing') return reject('Spiel läuft nicht');
+      if (game.get('turn') !== by || !players.includes(by) || !enemy) return reject('nicht am Zug');
+      if (!Number.isInteger(x) || !Number.isInteger(y) ||
+          x < 0 || y < 0 || x >= battleship.SIZE || y >= battleship.SIZE) return reject('ausserhalb');
+      if (shotRef.id !== `${by}_${x}_${y}`) return reject('falsche Schuss-ID');
+      if (earlier.some((s) => s.x === x && s.y === y)) return reject('Feld schon beschossen');
+      if (!enemyFleet || !enemyFleet.exists) return reject('gegnerische Flotte fehlt');
+
+      const fleet = enemyFleet.get('ships');
+      const hits = earlier.filter((s) => s.result === 'hit' || s.result === 'sunk');
+      const { result, shipId, shipLen } = battleship.resolveShot(fleet, hits, x, y);
+
+      // Bei einfachem Treffer bleibt das Schiff geheim; erst beim Versenken werden
+      // Länge und Felder verraten (die App zeichnet dann das brennende Boot).
+      tx.update(shotRef, result === 'sunk'
+        ? {
+          result,
+          shipLen,
+          shipCells: battleship.cellsOf(fleet.find((s) => s.id === shipId)),
+        }
+        : { result });
+
+      const update = {
+        resolving: false,
+        updatedAt: FieldValue.serverTimestamp(),
+        turn: result === 'miss' ? enemy : by,
+      };
+      if (result === 'sunk') update[`sunk.${enemy}`] = FieldValue.arrayUnion(shipId);
+      const won = result !== 'miss' && battleship.allSunk(fleet, [...hits, { x, y }]);
+      // Punktestand zählt nur der Server – so kann niemand schummeln.
+      const points = battleship.pointsFor(result, won);
+      if (points) update[`scores.${by}`] = FieldValue.increment(points);
+      if (won) {
+        Object.assign(update, {
+          status: 'done',
+          winner: by,
+          turn: null,
+          revealed: { [by]: myFleet.get('ships') || [], [enemy]: fleet },
+        });
+      }
+      tx.update(gameRef, update);
+    });
   },
 );

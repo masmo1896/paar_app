@@ -1,6 +1,10 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -13,10 +17,25 @@ import 'theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  if (_useEmulators) await _connectEmulators();
   // App Check zuerst, damit schon die ersten Firebase-Anfragen ein Siegel tragen.
   await _startAppCheck();
   await AppLogger.init();
   runApp(const PaarApp());
+}
+
+// Nur zum Testen am Mac: --dart-define=USE_EMULATORS=true hängt die App an die lokalen
+// Firebase-Emulatoren (Testkonten, Testdaten). Echte Builds lassen das weg.
+const _useEmulators = bool.fromEnvironment('USE_EMULATORS');
+
+Future<void> _connectEmulators() async {
+  // Aus dem Android-Emulator heisst der Mac 10.0.2.2.
+  final host = defaultTargetPlatform == TargetPlatform.android
+      ? '10.0.2.2'
+      : 'localhost';
+  await FirebaseAuth.instance.useAuthEmulator(host, 9099);
+  FirebaseFirestore.instance.useFirestoreEmulator(host, 8080);
+  await FirebaseStorage.instance.useStorageEmulator(host, 9199);
 }
 
 // App Check: Firebase nimmt nur Anfragen von eurer eigenen App an.

@@ -9,7 +9,7 @@ import {
 } from '@firebase/rules-unit-testing';
 import {
   doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc,
-  Timestamp, serverTimestamp, arrayUnion,
+  Timestamp, serverTimestamp, arrayUnion, writeBatch,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getBytes, deleteObject } from 'firebase/storage';
 
@@ -199,4 +199,123 @@ test('Storage: nicht überschreiben und Fremde löschen nichts', async () => {
 
 test('Storage: unbekannte Pfade verboten', async () => {
   await assertFails(uploadBytes(ref(st(ME), `irgendwo/x.png`), bytes(10), png));
+});
+
+// ---------- Spiele ----------
+const seed = (fn) => env.withSecurityRulesDisabled((ctx) => fn(ctx.firestore()));
+const bsPath = (d, ...rest) => doc(d, 'couples', C, 'battleships', 'g1', ...rest);
+const fleet = [
+  { id: 's5', len: 5, x: 0, y: 0, vertical: false },
+  { id: 's4', len: 4, x: 0, y: 1, vertical: false },
+  { id: 's3a', len: 3, x: 0, y: 2, vertical: false },
+  { id: 's3b', len: 3, x: 0, y: 3, vertical: false },
+  { id: 's2', len: 2, x: 0, y: 4, vertical: false },
+];
+async function seedBattle(extra = {}) {
+  await seed((d) => setDoc(bsPath(d), {
+    status: 'playing', players: [ME, LOVE], turn: ME, resolving: false,
+    createdBy: ME, createdAt: Timestamp.now(), updatedAt: Timestamp.now(), sunk: {}, ...extra,
+  }));
+  await seed((d) => setDoc(bsPath(d, 'fleets', LOVE), { ships: fleet }));
+}
+const shoot = (u, x, y) => {
+  const d = db(u);
+  const b = writeBatch(d);
+  b.set(bsPath(d, 'shots', `${u}_${x}_${y}`), { by: u, x, y, at: serverTimestamp() });
+  b.update(bsPath(d), { resolving: true });
+  return b.commit();
+};
+
+test('Schiffe: neues Spiel nur mit dem Schatz, nicht mit Fremden', async () => {
+  const base = { status: 'setup', turn: null, resolving: false, createdBy: ME,
+    createdAt: serverTimestamp(), updatedAt: serverTimestamp(), sunk: {} };
+  await assertFails(setDoc(bsPath(db(ME)), { ...base, players: [ME, STRANGER] }));
+  await assertFails(setDoc(bsPath(db(STRANGER)), { ...base, createdBy: STRANGER, players: [STRANGER, ME] }));
+  await assertSucceeds(setDoc(bsPath(db(ME)), { ...base, players: [ME, LOVE] }));
+});
+
+test('Schiffe: fremde Flotte ist nicht lesbar, eigene schon', async () => {
+  await seedBattle();
+  await assertFails(getDoc(bsPath(db(ME), 'fleets', LOVE)));
+  await assertSucceeds(getDoc(bsPath(db(LOVE), 'fleets', LOVE)));
+  await assertFails(getDoc(bsPath(db(STRANGER), 'fleets', LOVE)));
+});
+
+test('Schiffe: Flotte nur vor Spielbeginn und nur die eigene setzen', async () => {
+  await seedBattle({ status: 'setup', turn: null });
+  await assertFails(setDoc(bsPath(db(ME), 'fleets', LOVE), { ships: fleet }));
+  await assertSucceeds(setDoc(bsPath(db(ME), 'fleets', ME), { ships: fleet }));
+  await seed((d) => updateDoc(bsPath(d), { status: 'playing' }));
+  await assertFails(setDoc(bsPath(db(ME), 'fleets', ME), { ships: fleet }));
+});
+
+test('Schiffe: schiessen nur wer dran ist, und nur einmal pro Feld', async () => {
+  await seedBattle();
+  await assertFails(shoot(LOVE, 1, 1));
+  await assertFails(shoot(STRANGER, 1, 1));
+  await assertSucceeds(shoot(ME, 1, 1));
+  // während der Auswertung kein zweiter Schuss
+  await assertFails(shoot(ME, 2, 2));
+  await seed((d) => updateDoc(bsPath(d), { resolving: false }));
+  await assertFails(shoot(ME, 1, 1));
+});
+
+test('Schiffe: Schuss braucht passende ID, gültige Koordinaten und Sperre', async () => {
+  await seedBattle();
+  const d = db(ME);
+  await assertFails(setDoc(bsPath(d, 'shots', `${ME}_3_3`), { by: ME, x: 3, y: 3, at: serverTimestamp() }));
+  const b = writeBatch(d);
+  b.set(bsPath(d, 'shots', `${ME}_3_4`), { by: ME, x: 3, y: 3, at: serverTimestamp() });
+  b.update(bsPath(d), { resolving: true });
+  await assertFails(b.commit());
+  await assertFails(shoot(ME, 10, 0));
+});
+
+test('Schiffe: Spielstand (Zug, Sieger) kann der Client nicht fälschen', async () => {
+  await seedBattle();
+  await assertFails(updateDoc(bsPath(db(ME)), { turn: LOVE }));
+  await assertFails(updateDoc(bsPath(db(ME)), { status: 'done', winner: ME, turn: null, updatedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(bsPath(db(ME)), { status: 'done', winner: LOVE, turn: null, updatedAt: serverTimestamp() }));
+});
+
+const cwPath = (d) => doc(d, 'couples', C, 'crosswords', 'k1');
+async function seedCrossword(extra = {}) {
+  await seed((d) => setDoc(cwPath(d), {
+    status: 'playing', turn: ME, createdBy: ME, createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+    size: 9, words: [], solved: { w1: LOVE }, attempts: 2, hintsUsed: 0, revealed: [], ...extra,
+  }));
+}
+
+test('Kreuzwort: neues Rätsel nur mit sauberem Startzustand', async () => {
+  const words = [1, 2, 3, 4].map((i) => ({ id: `w${i}`, clue: 'c', answer: 'ABC', x: 0, y: i, across: true }));
+  const base = { status: 'playing', turn: ME, createdBy: ME, createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(), size: 9, words, solved: {}, attempts: 0, hintsUsed: 0, revealed: [] };
+  await assertFails(setDoc(cwPath(db(ME)), { ...base, solved: { w1: ME } }));
+  await assertFails(setDoc(cwPath(db(STRANGER)), { ...base, createdBy: STRANGER, turn: STRANGER }));
+  await assertSucceeds(setDoc(cwPath(db(ME)), base));
+});
+
+test('Kreuzwort: Zug nur wer dran ist, danach ist der Schatz dran', async () => {
+  await seedCrossword();
+  const move = { solved: { w1: LOVE, w2: ME }, turn: LOVE, updatedAt: serverTimestamp() };
+  await assertFails(updateDoc(cwPath(db(LOVE)), { ...move, turn: ME }));
+  await assertFails(updateDoc(cwPath(db(ME)), { ...move, turn: ME }));
+  await assertFails(updateDoc(cwPath(db(ME)), { ...move, turn: STRANGER }));
+  await assertSucceeds(updateDoc(cwPath(db(ME)), move));
+});
+
+test('Kreuzwort: gelöste Wörter und Lösung bleiben unverändert', async () => {
+  await seedCrossword();
+  await assertFails(updateDoc(cwPath(db(ME)), { solved: {}, turn: LOVE, updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(cwPath(db(ME)), { solved: { w1: ME }, turn: LOVE, updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(cwPath(db(ME)), { words: [{ id: 'x', answer: 'A' }], turn: LOVE, updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(cwPath(db(ME)), { attempts: 0, turn: LOVE, updatedAt: serverTimestamp() }));
+});
+
+test('Spiele: Fremde sehen nichts', async () => {
+  await seedBattle();
+  await seedCrossword();
+  await assertFails(getDoc(bsPath(db(STRANGER))));
+  await assertFails(getDoc(cwPath(db(STRANGER))));
+  await assertSucceeds(getDoc(cwPath(db(LOVE))));
 });

@@ -34,16 +34,26 @@ class UsScreen extends StatelessWidget {
         padding: EdgeInsets.zero,
         children: [
           SizedBox(
-            // Gross, damit Mond und Füchse wirken (seitlich leicht beschnitten).
-            height: 320 + top,
+            // Kompakter Kopf; unten blendet das Bild sanft aus.
+            height: 230 + top,
             child: Stack(
               fit: StackFit.expand,
               children: [
-                SvgPicture.asset(
-                  KitsuneArt.foxes.asset,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.bottomCenter,
-                  semanticsLabel: 'Zwei Füchse auf einer Brücke, ihre Schwänze bilden ein Herz',
+                ShaderMask(
+                  blendMode: BlendMode.dstIn,
+                  shaderCallback: (r) => const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.black, Colors.black, Colors.transparent],
+                    stops: [0, 0.6, 1],
+                  ).createShader(r),
+                  child: SvgPicture.asset(
+                    KitsuneArt.foxes.asset,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.bottomCenter,
+                    semanticsLabel:
+                        'Zwei Füchse auf einer Brücke, ihre Schwänze bilden ein Herz',
+                  ),
                 ),
                 Positioned(
                   top: top + 8,
@@ -68,19 +78,19 @@ class UsScreen extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               // Karten erscheinen beim Öffnen sanft nacheinander.
               children: staggered([
                 _Names(couple: couple),
-                const SizedBox(height: 18),
+                const SizedBox(height: 28),
                 DailyQuestionCard(couple: couple),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 LoveLettersCard(couple: couple),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 DateJarCard(couple: couple),
-                const SizedBox(height: 22),
+                const SizedBox(height: 28),
                 _Memories(couple: couple),
               ]),
             ),
@@ -193,7 +203,7 @@ Future<void> _editNickname(BuildContext context, String current) async {
   if (name != null) await CoupleService.instance.setPartnerNickname(name);
 }
 
-/// Erinnerungen kompakt: eine Reihe schräger Polaroids – vorne "Aus dem Chat",
+/// Erinnerungen kompakt: eine Reihe runder Kacheln – vorne "Aus dem Chat",
 /// dann die neuesten Alben, am Ende "Neues Album". "Alle ›" öffnet die Alben-Seite.
 class _Memories extends StatelessWidget {
   const _Memories({required this.couple});
@@ -229,7 +239,15 @@ class _Memories extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: Text('Erinnerungen', style: AppTheme.serif(size: 18)),
+              child: Text(
+                'ERINNERUNGEN',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.8,
+                  color: Kitsune.aqua,
+                ),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).push(
@@ -252,7 +270,6 @@ class _Memories extends StatelessWidget {
                 if (bt == null) return 1;
                 return bt.compareTo(at);
               });
-            const tilts = [-0.035, 0.026, -0.017, 0.02, -0.028, 0.012];
             final tiles = [
               // Fester Ordner mit allen Fotos und Videos aus dem Chat.
               _ChatMediaPolaroid(coupleId: couple.coupleId),
@@ -261,22 +278,16 @@ class _Memories extends StatelessWidget {
                 _Polaroid(album: album, onTap: () => _open(context, album.id)),
               _Polaroid(onTap: () => _create(context)),
             ];
-            // Eine Reihe schräger Polaroids, seitlich wischbar.
+            // Eine ruhige Reihe Kacheln, seitlich wischbar.
             return SizedBox(
-              height: 132,
+              height: 128,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 clipBehavior: Clip.none,
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.symmetric(vertical: 4),
                 itemCount: tiles.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 12),
-                itemBuilder: (context, i) => SizedBox(
-                  width: 94,
-                  child: Transform.rotate(
-                    angle: tilts[i % tilts.length],
-                    child: tiles[i],
-                  ),
-                ),
+                itemBuilder: (context, i) => SizedBox(width: 96, child: tiles[i]),
               ),
             );
           },
@@ -345,25 +356,15 @@ class _Polaroid extends StatelessWidget {
     final cover = album?.coverUrl ?? this.cover;
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(5, 5, 5, 8),
-        decoration: BoxDecoration(
-          color: Kitsune.paper,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.35),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            // Bild füllt den Ordner, Name darunter.
-            Expanded(
+      child: Column(
+        children: [
+          // Bild füllt die Kachel, Name darunter.
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
               child: Container(
                 width: double.infinity,
-                color: Kitsune.indigo,
+                color: Kitsune.deep,
                 child: cover != null
                     ? Image.network(
                         cover,
@@ -374,19 +375,19 @@ class _Polaroid extends StatelessWidget {
                     : Icon(
                         icon ??
                             (album == null ? Icons.add : Icons.photo_outlined),
-                        color: Kitsune.paper,
+                        color: Kitsune.mist,
                       ),
               ),
             ),
-            const SizedBox(height: 5),
-            Text(
-              album?.name ?? name ?? 'Neues Album',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTheme.serif(size: 11.5, color: Kitsune.night),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            album?.name ?? name ?? 'Neues Album',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, color: Kitsune.mist),
+          ),
+        ],
       ),
     );
   }

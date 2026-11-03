@@ -113,7 +113,6 @@ class _DailyQuestionCardState extends State<DailyQuestionCard> {
           return const SizedBox.shrink();
         }
         return UsCard(
-          stamp: '問',
           title: 'Frage des Tages',
           trailing: widget.hideWhenDone
               ? null
@@ -303,7 +302,6 @@ class QuestionArchiveScreen extends StatelessWidget {
                   q.answered.contains(couple.myUid) &&
                   q.answered.contains(partnerUid);
               return UsCard(
-                stamp: '問',
                 title: _shortDate(date),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -361,7 +359,6 @@ class LoveLettersCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final partner = couple.partnerLabel;
     return UsCard(
-      stamp: '文',
       title: 'Liebesbriefe',
       child: StreamBuilder<List<Letter>>(
         stream: UsService.instance.letters(couple.coupleId),
@@ -414,7 +411,7 @@ class LoveLettersCard extends StatelessWidget {
                           ),
                         ),
                   style: FilledButton.styleFrom(
-                    backgroundColor: Kitsune.lantern,
+                    backgroundColor: Kitsune.paper.withValues(alpha: 0.1),
                     foregroundColor: Kitsune.paper,
                   ),
                   icon: const Icon(Icons.mail_outline_rounded, size: 18),
@@ -868,7 +865,6 @@ class _DateJarCardState extends State<DateJarCard>
         ];
         final idea = _idea;
         return UsCard(
-          stamp: '瓶',
           title: 'Date-Glas',
           trailing: Text(
             '${pool.length} Ideen',
@@ -891,8 +887,8 @@ class _DateJarCardState extends State<DateJarCard>
                       child: child,
                     ),
                     child: const SizedBox(
-                      width: 78,
-                      height: 96,
+                      width: 64,
+                      height: 80,
                       child: CustomPaint(painter: JarPainter()),
                     ),
                   ),

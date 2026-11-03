@@ -6,45 +6,48 @@ import '../theme.dart';
 import '../utils/dates.dart';
 import '../widgets/motion.dart';
 
-/// Nachtblaue Karte für einen Bereich der "Wir"-Seite: Stempel, Titel, Inhalt.
+/// Ruhige Karte für einen Bereich der "Wir"-Seite: nur Titel und Inhalt auf
+/// einer weichen, nachtblauen Fläche – ohne Rand und Zierrat.
 class UsCard extends StatelessWidget {
   const UsCard({
     super.key,
-    required this.stamp,
     required this.title,
     required this.child,
     this.trailing,
   });
 
-  final String stamp; // ein Schriftzeichen im roten Hanko
   final String title;
   final Widget child;
   final Widget? trailing;
 
   @override
-  // Material statt Container: Gleiches Nachtblau wie die Illustration oben,
-  // feiner heller Rand – und Listenzeilen darin zeigen ihren Tipp-Effekt.
+  // Material statt Container: Listenzeilen darin zeigen ihren Tipp-Effekt.
   Widget build(BuildContext context) => Material(
-    color: Kitsune.deep,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(14),
-      side: BorderSide(color: Kitsune.paper.withValues(alpha: 0.14)),
-    ),
+    color: Kitsune.deep.withValues(alpha: 0.62),
+    borderRadius: BorderRadius.circular(22),
     clipBehavior: Clip.antiAlias,
     child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Hanko(stamp, size: 24),
-              const SizedBox(width: 10),
-              Expanded(child: Text(title, style: AppTheme.serif(size: 17))),
+              Expanded(
+                child: Text(
+                  title.toUpperCase(),
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.8,
+                    color: Kitsune.aqua,
+                  ),
+                ),
+              ),
               ?trailing,
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           child,
         ],
       ),
@@ -103,31 +106,23 @@ class TogetherCounter extends StatelessWidget {
               CountUp(
                 value: totalDays,
                 duration: const Duration(milliseconds: 1100),
-                style: AppTheme.serif(size: 46, color: Kitsune.paper).copyWith(
-                  height: 1,
-                  shadows: const [
-                    Shadow(color: Kitsune.lantern, blurRadius: 18),
-                  ],
-                ),
+                style: AppTheme.serif(size: 54, color: Kitsune.paper)
+                    .copyWith(height: 1),
               ),
               const SizedBox(height: 2),
               Text(
-                'Tage zusammen',
+                'TAGE ZUSAMMEN',
                 style: AppTheme.serif(
-                  size: 12,
+                  size: 11.5,
                   weight: FontWeight.w600,
                   color: Kitsune.aqua,
                 ).copyWith(letterSpacing: 2.4),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
+              // Antippen zeigt die Meilensteine – daher der kleine Pfeil.
               Text(
-                parts.join(', '),
+                '${parts.join(', ')}  ›',
                 style: const TextStyle(fontSize: 13, color: Kitsune.mist),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Meilensteine ›',
-                style: TextStyle(fontSize: 12, color: Kitsune.aqua),
               ),
             ],
           ),

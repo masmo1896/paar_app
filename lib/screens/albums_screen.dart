@@ -6,6 +6,7 @@ import '../services/album_service.dart';
 import '../utils/dates.dart';
 import '../widgets/who.dart';
 import 'photo_viewer.dart';
+import '../services/app_logger.dart';
 
 /// Alle gemeinsamen Alben als Kacheln mit Titelbild.
 class AlbumsScreen extends StatelessWidget {
@@ -272,7 +273,8 @@ class _AlbumScreenState extends State<AlbumScreen> {
           if (mounted) setState(() => _upload = (done, total));
         },
       );
-    } catch (e) {
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'Album: Fotos hochladen');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Fotos konnten nicht hochgeladen werden: $e')),

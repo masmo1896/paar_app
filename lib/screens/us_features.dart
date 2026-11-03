@@ -12,6 +12,7 @@ import '../utils/dates.dart';
 import '../widgets/who.dart';
 import 'us_sections.dart';
 import '../widgets/motion.dart';
+import '../services/app_logger.dart';
 
 const _hint = TextStyle(fontSize: 13, color: Kitsune.mist, height: 1.35);
 
@@ -86,7 +87,8 @@ class _DailyQuestionCardState extends State<DailyQuestionCard> {
     try {
       await _service.answerDay(widget.couple.coupleId, _day, _question, text);
       _input.clear();
-    } catch (e) {
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'Frage des Tages: Antwort speichern');
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Nicht gespeichert: $e')));
@@ -583,7 +585,8 @@ class _LetterComposerState extends State<LetterComposer> {
           ),
         ),
       );
-    } catch (e) {
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'Liebesbrief senden');
       messenger.showSnackBar(SnackBar(content: Text('Nicht gesendet: $e')));
       if (mounted) setState(() => _sending = false);
     }

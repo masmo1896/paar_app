@@ -20,6 +20,7 @@ import '../widgets/partner_header.dart';
 import '../widgets/selfie_video.dart';
 import '../widgets/voice.dart';
 import '../widgets/motion.dart';
+import '../services/app_logger.dart';
 
 // Der Chat: Nachrichten kommen in Echtzeit über einen Firestore-Stream.
 class ChatScreen extends StatefulWidget {
@@ -499,7 +500,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     setState(() => _uploading = true);
     try {
       await action();
-    } catch (e) {
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'Chat: $errorText');
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('$errorText: $e')));

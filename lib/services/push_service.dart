@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
+import 'app_logger.dart';
+
 /// Push-Benachrichtigungen (Firebase Cloud Messaging).
 ///
 /// So läuft es: Dieses Gerät meldet sich mit einem "Token" an (eine Art Postfach-Adresse)
@@ -51,7 +53,8 @@ class PushService {
     } catch (e) {
       // Beim iPhone ohne bezahltes Apple-Entwicklerkonto gibt es keinen Push-Token.
       // Die App läuft dann einfach ohne Benachrichtigungen weiter.
-      debugPrint('Push nicht verfügbar: $e');
+      // Nur als Notiz (kein Fehlerbericht), sonst meldet jedes iPhone-Start einen Fehler.
+      AppLogger.info('Push nicht verfügbar: ${e.runtimeType}');
     }
 
     // App war im Hintergrund und wurde über die Benachrichtigung geöffnet ...

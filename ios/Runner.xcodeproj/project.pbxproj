@@ -158,6 +158,7 @@
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
+				C7A5F00D2F0A0001A1C0FFEE /* Crashlytics dSYM Upload */,
 			);
 			buildRules = (
 			);
@@ -265,6 +266,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
+		};
+		C7A5F00D2F0A0001A1C0FFEE /* Crashlytics dSYM Upload */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${PRODUCT_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Info.plist",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist",
+				"$(TARGET_BUILD_DIR)/$(EXECUTABLE_PATH)",
+			);
+			name = "Crashlytics dSYM Upload";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Crashlytics: Debug-Symbole hochladen, damit iPhone-Abstürze lesbar sind.\n# Darf den Build nie scheitern lassen.\nRUN=\"\"\nfor d in \"${BUILD_DIR%/Build/*}/SourcePackages\" \"${SRCROOT}/../build/ios/SourcePackages\"; do\n  if [ -x \"$d/checkouts/firebase-ios-sdk/Crashlytics/run\" ]; then RUN=\"$d/checkouts/firebase-ios-sdk/Crashlytics/run\"; break; fi\ndone\nif [ -z \"$RUN\" ]; then echo \"warning: Crashlytics-Skript nicht gefunden, Symbole nicht hochgeladen\"; exit 0; fi\n\"$RUN\" || echo \"warning: Crashlytics-Upload fehlgeschlagen\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

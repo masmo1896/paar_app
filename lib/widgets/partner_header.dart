@@ -10,6 +10,7 @@ import '../services/push_service.dart';
 import '../theme.dart';
 import 'who.dart';
 import '../utils/shared_stream.dart';
+import '../services/app_logger.dart';
 
 /// Rundes Profilbild; ohne Bild wird der erste Buchstabe des Namens gezeigt.
 class Avatar extends StatelessWidget {
@@ -379,7 +380,8 @@ class ChatMenu extends StatelessWidget {
           const SnackBar(content: Text('Profilbild gespeichert')),
         );
       }
-    } catch (e) {
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'Profilbild speichern');
       messenger.showSnackBar(
         SnackBar(
           content: Text('Profilbild konnte nicht gespeichert werden: $e'),

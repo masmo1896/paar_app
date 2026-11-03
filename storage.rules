@@ -20,7 +20,7 @@ service firebase.storage {
       allow read: if request.auth != null &&
         (request.auth.uid == uid ||
           (coupleOf(uid) != null && coupleOf(uid) == coupleOf(request.auth.uid)));
-      allow create: if request.auth != null && request.auth.uid == uid &&
+      allow create: if resource == null && request.auth != null && request.auth.uid == uid &&
         request.resource.contentType.matches('image/.*') &&
         request.resource.size < 5 * 1024 * 1024;
     }
@@ -28,7 +28,7 @@ service firebase.storage {
     match /couples/{coupleId}/images/{fileName} {
       allow read, delete: if isMember(coupleId);
       // Nur Bilder, höchstens 15 MB, und nichts überschreiben.
-      allow create: if isMember(coupleId) &&
+      allow create: if resource == null && isMember(coupleId) &&
         request.resource.contentType.matches('image/.*') &&
         request.resource.size < 15 * 1024 * 1024;
     }
@@ -36,7 +36,7 @@ service firebase.storage {
     // Fotoalben: nur Bilder, höchstens 15 MB; beide dürfen ansehen und löschen.
     match /couples/{coupleId}/albums/{albumId}/{fileName} {
       allow read, delete: if isMember(coupleId);
-      allow create: if isMember(coupleId) &&
+      allow create: if resource == null && isMember(coupleId) &&
         request.resource.contentType.matches('image/.*') &&
         request.resource.size < 15 * 1024 * 1024;
     }
@@ -44,7 +44,7 @@ service firebase.storage {
     match /couples/{coupleId}/audio/{fileName} {
       allow read, delete: if isMember(coupleId);
       // Nur Audio, höchstens 10 MB (reicht für mehrere Minuten).
-      allow create: if isMember(coupleId) &&
+      allow create: if resource == null && isMember(coupleId) &&
         request.resource.contentType.matches('audio/.*') &&
         request.resource.size < 10 * 1024 * 1024;
     }
@@ -52,14 +52,14 @@ service firebase.storage {
     // Dateien aus dem Chat (PDF, Word, Tickets …): jede Art, höchstens 25 MB.
     match /couples/{coupleId}/files/{folder}/{fileName} {
       allow read, delete: if isMember(coupleId);
-      allow create: if isMember(coupleId) &&
+      allow create: if resource == null && isMember(coupleId) &&
         request.resource.size < 25 * 1024 * 1024;
     }
 
     match /couples/{coupleId}/videos/{fileName} {
       allow read, delete: if isMember(coupleId);
       // Nur Videos, höchstens 50 MB (eine Minute in mittlerer Qualität sind ca. 5–10 MB).
-      allow create: if isMember(coupleId) &&
+      allow create: if resource == null && isMember(coupleId) &&
         request.resource.contentType.matches('video/.*') &&
         request.resource.size < 50 * 1024 * 1024;
     }

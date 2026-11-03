@@ -38,7 +38,10 @@ service cloud.firestore {
     match /couples/{coupleId} {
       allow read: if isMember(coupleId);
       // Neues Paar: nur man selbst als Mitglied.
-      allow create: if signedIn() && request.resource.data.members == [request.auth.uid];
+      allow create: if signedIn() && request.resource.data.members == [request.auth.uid] &&
+        request.resource.data.keys().hasOnly(['members', 'inviteCode', 'createdAt']) &&
+        request.resource.data.inviteCode is string &&
+        request.resource.data.inviteCode.size() >= 4 && request.resource.data.inviteCode.size() <= 12;
       // Beitreten: genau eine Person kommt dazu, sonst ändert sich nichts.
       allow update: if signedIn() &&
         resource.data.members.size() == 1 &&
@@ -197,7 +200,8 @@ service cloud.firestore {
       // "schreibt…"-Anzeige: lesen beide, schreiben nur das eigene Dokument.
       match /typing/{uid} {
         allow read: if isMember(coupleId);
-        allow write: if isMember(coupleId) && request.auth.uid == uid;
+        allow write: if isMember(coupleId) && request.auth.uid == uid &&
+          (request.method == 'delete' || request.resource.data.keys().hasOnly(['at']));
       }
 
       match /messages/{messageId} {
@@ -264,7 +268,11 @@ service cloud.firestore {
     // Einladungscodes: Wer den Code kennt, darf ihn nachschlagen (aber nicht auflisten).
     match /invites/{code} {
       allow get: if signedIn();
-      allow create: if signedIn() && isMemberAfter(request.resource.data.coupleId);
+      allow create: if signedIn() &&
+        request.resource.data.keys().hasOnly(['coupleId']) &&
+        request.resource.data.coupleId is string &&
+        isMemberAfter(request.resource.data.coupleId);
+      // Codes bleiben unveränderlich (kein update/delete).
     }
   }
 }

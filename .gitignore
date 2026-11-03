@@ -49,3 +49,15 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Geheimnisse und Testwerkzeug-Reste
+dart_defines.json
+key.properties
+*.jks
+*.keystore
+*.p8
+*.p12
+serviceAccount*.json
+.env*
+*-debug.log
+rules_test/node_modules/

@@ -11,6 +11,7 @@ import '../services/lantern_service.dart';
 import '../theme.dart';
 import 'who.dart';
 import 'motion.dart';
+import '../services/app_logger.dart';
 
 /// Unser Laternenhimmel: Jede Laterne heisst "Ich denk an dich" und bleibt für
 /// immer am Himmel – deine rot, die deines Schatzes aqua.
@@ -170,7 +171,8 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
     if (partnerJustSent) _celebrate();
     try {
       await saving;
-    } catch (e) {
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'Laterne senden');
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Nicht gesendet: $e')));

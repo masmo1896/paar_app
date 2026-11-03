@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 
+import '../services/app_logger.dart';
+
 /// Ergebnis der Kamera: Foto oder Video (mit Länge).
 typedef CameraShot = ({String path, bool isVideo, Duration duration});
 
@@ -66,7 +68,8 @@ class _CameraPageState extends State<CameraPage> {
     try {
       _cameras = await availableCameras();
       await _open();
-    } catch (e) {
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'Kamera starten');
       setState(() => _error = 'Kamera konnte nicht gestartet werden.\n$e');
     }
   }
@@ -103,7 +106,8 @@ class _CameraPageState extends State<CameraPage> {
       await camera.setFlashMode(
         _mode == CameraMode.photo ? _flash : FlashMode.off,
       );
-    } catch (e) {
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'Kamera öffnen');
       await camera.dispose();
       if (mounted) setState(() => _error = 'Kamera-Fehler: $e');
       return;
@@ -193,7 +197,8 @@ class _CameraPageState extends State<CameraPage> {
         _lastThumb = file.path;
         _review = (path: file.path, isVideo: false, duration: Duration.zero);
       });
-    } catch (e) {
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'Kamera: Foto aufnehmen');
       if (mounted) setState(() => _blink = false);
       _toast('Foto fehlgeschlagen: $e');
     }

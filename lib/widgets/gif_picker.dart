@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../config.dart';
 import '../theme.dart';
+import '../services/app_logger.dart';
 
 /// Was im GIF-Fenster ausgewählt wurde: ein GIPHY-GIF (Link) oder "aus Galerie".
 sealed class GifChoice {}
@@ -114,7 +115,8 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
         ];
         _loading = false;
       });
-    } catch (e) {
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'GIFs laden');
       if (!mounted) return;
       setState(() {
         _error = 'GIFs konnten nicht geladen werden.';

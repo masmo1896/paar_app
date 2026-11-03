@@ -333,7 +333,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     style: TextButton.styleFrom(
                       foregroundColor: Kitsune.indigo,
                     ),
-                    child: const Text('Passwort vergessen?'),
+                    child: const Text('Passwort vergessen, ? Kein Problem'),
                   ),
                 )
               else

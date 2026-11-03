@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../services/couple_service.dart' show mimeTypeFor;
 import '../theme.dart';
+import '../services/app_logger.dart';
 
 /// "1,4 MB", "820 KB"
 String formatFileSize(int bytes) {
@@ -108,7 +109,8 @@ class _FileBubbleState extends State<FileBubble> {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'Datei öffnen');
       if (mounted) setState(() => _progress = null);
       messenger.showSnackBar(
         SnackBar(content: Text('Datei konnte nicht geladen werden: $e')),

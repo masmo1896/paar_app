@@ -9,6 +9,7 @@ import '../utils/shared_stream.dart';
 import '../services/planner_service.dart';
 import '../theme.dart';
 import '../utils/dates.dart';
+import '../utils/wisdom.dart';
 import '../widgets/lantern_sky.dart';
 import '../widgets/who.dart';
 import 'countdown_screen.dart';
@@ -174,7 +175,7 @@ class _Header extends StatelessWidget {
 
     // Nur Text – die Illustration liegt als Hintergrund dahinter.
     return SizedBox(
-      height: 214 + top,
+      height: 262 + top,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -211,6 +212,8 @@ class _Header extends StatelessWidget {
                       longDay(today()),
                       style: const TextStyle(fontSize: 12, color: Kitsune.mist),
                     ),
+                    const SizedBox(height: 10),
+                    const _DailyWisdom(),
                   ],
                 );
               },
@@ -220,6 +223,129 @@ class _Header extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Japanische Weisheit des Tages unter dem Datum: dezent, eine Zeile Japanisch
+/// und die Übersetzung. Antippen zeigt Lesung und was ihr daraus lernen könnt.
+class _DailyWisdom extends StatelessWidget {
+  const _DailyWisdom();
+
+  @override
+  Widget build(BuildContext context) {
+    final w = wisdomFor(today());
+    return Semantics(
+      button: true,
+      label: 'Weisheit des Tages: ${w.meaning} Antippen für mehr',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _showWisdom(context, w),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Feiner roter Strich wie bei einer Kalligrafie-Rolle.
+            Container(
+              width: 2,
+              height: 34,
+              margin: const EdgeInsets.only(right: 10, top: 2),
+              color: Kitsune.lantern.withValues(alpha: 0.8),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    w.japanese,
+                    style: AppTheme.serif(
+                      size: 14,
+                      weight: FontWeight.w600,
+                      color: Kitsune.paper,
+                    ).copyWith(letterSpacing: 2),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${w.meaning}  ›',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: Kitsune.aqua,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+void _showWisdom(BuildContext context, Wisdom w) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'WEISHEIT DES TAGES',
+              style: AppTheme.label(color: Kitsune.aqua, size: 11),
+            ),
+            const SizedBox(height: 12),
+            Text(w.japanese, style: AppTheme.serif(size: 34)),
+            const SizedBox(height: 4),
+            Text(
+              w.reading,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Kitsune.mist,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              '«${w.meaning}»',
+              style: AppTheme.serif(size: 19, color: Kitsune.paper),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              decoration: BoxDecoration(
+                color: Kitsune.deep,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Kitsune.paper.withValues(alpha: 0.14),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Hanko('愛', size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      w.lesson,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        height: 1.45,
+                        color: Kitsune.paper,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 /// Der nächste Countdown als Ticket zwischen zwei Pflaumen-Rollen.

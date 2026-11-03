@@ -6,6 +6,70 @@ import 'crossword_words.dart';
 /// Ein fertiges Rätsel: quadratisches Feld der Kantenlänge [size].
 typedef CrosswordPuzzle = ({int size, List<CrosswordWord> words});
 
+/// Schwierigkeit: Grösse, Wortanzahl, Wortlänge und aufgedeckte Startbuchstaben.
+enum CrosswordLevel {
+  easy('Einfach', '9×9 · kurze Wörter · 2 Buchstaben geschenkt'),
+  medium('Mittel', '11×11 · 10 Wörter'),
+  hard('Schwer', '13×13 · lange, knifflige Wörter');
+
+  const CrosswordLevel(this.label, this.description);
+  final String label;
+  final String description;
+
+  int get maxSize => switch (this) {
+    easy => 9,
+    medium => 11,
+    hard => 13,
+  };
+  int get target => switch (this) {
+    easy => 7,
+    medium => 10,
+    hard => 14,
+  };
+  int get minLength => switch (this) {
+    easy => 3,
+    medium => 3,
+    hard => 5,
+  };
+  int get maxLength => switch (this) {
+    easy => 6,
+    medium => 10,
+    hard => 12,
+  };
+
+  /// So viele Buchstaben sind zu Beginn schon aufgedeckt.
+  int get giftedLetters => this == easy ? 2 : 0;
+
+  List<(String, String)> get bank => this == hard
+      ? [...crosswordWordsHard, ...crosswordWords]
+      : crosswordWords;
+
+  static CrosswordLevel fromName(String? name) =>
+      values.firstWhere((l) => l.name == name, orElse: () => medium);
+}
+
+/// Rätsel für eine Stufe; bei «Einfach» mit [CrosswordLevel.giftedLetters]
+/// zufällig aufgedeckten Feldern (als Feld-Nummern, siehe [cellIndex]).
+({CrosswordPuzzle puzzle, List<int> revealed}) generateForLevel(
+  CrosswordLevel level, {
+  Random? random,
+}) {
+  final rnd = random ?? Random();
+  final puzzle = generateCrossword(
+    bank: level.bank,
+    maxSize: level.maxSize,
+    target: level.target,
+    minLength: level.minLength,
+    maxLength: level.maxLength,
+    random: rnd,
+  );
+  final cells = {
+    for (final w in puzzle.words)
+      for (final c in w.cells) cellIndex(c, puzzle.size),
+  }.toList()..shuffle(rnd);
+  return (puzzle: puzzle, revealed: cells.take(level.giftedLetters).toList());
+}
+
 /// Baut ein Kreuzworträtsel mit bis zu [target] sich kreuzenden Wörtern.
 /// Probiert [attempts] Varianten und nimmt die mit den meisten Wörtern und Kreuzungen.
 CrosswordPuzzle generateCrossword({
@@ -13,12 +77,17 @@ CrosswordPuzzle generateCrossword({
   int maxSize = 11,
   int target = 10,
   int attempts = 30,
+  int minLength = 3,
+  int maxLength = 10,
   Random? random,
 }) {
   final rnd = random ?? Random();
+  final seen = <String>{};
   final usable = [
     for (final (answer, clue) in bank)
-      if (answer.length >= 3 && answer.length <= maxSize - 1)
+      if (answer.length >= minLength &&
+          answer.length <= min(maxLength, maxSize - 1) &&
+          seen.add(normalizeAnswer(answer)))
         (normalizeAnswer(answer), clue),
   ];
 

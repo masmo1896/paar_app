@@ -487,6 +487,18 @@ enum KitsuneArt {
 
   const KitsuneArt(this.asset);
   final String asset;
+
+  /// Alle Kopfzeilen-Bilder vorab laden, damit beim Öffnen einer Seite nichts
+  /// erst gelesen werden muss (sonst ruckelt das erste Bild der Animation).
+  static Future<void> precacheAll() async {
+    for (final a in values) {
+      final loader = SvgAssetLoader(a.asset);
+      await svg.cache.putIfAbsent(
+        loader.cacheKey(null),
+        () => loader.loadBytes(null),
+      );
+    }
+  }
 }
 
 /// Kopfzeile im Kitsune-Stil: Illustration im Hintergrund, darüber eine kleine

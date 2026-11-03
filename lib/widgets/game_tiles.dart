@@ -8,6 +8,7 @@ import '../services/battleship_service.dart';
 import '../services/crossword_service.dart';
 import '../services/games_service.dart';
 import '../theme.dart';
+import '../utils/crossword_generator.dart';
 import 'motion.dart';
 import 'who.dart';
 
@@ -71,7 +72,7 @@ class GameTiles extends StatelessWidget {
 
   String _crosswordStatus(CrosswordGame? g) {
     if (g == null || g.isDone) return 'Neues Rätsel';
-    return _turnText(g.turn);
+    return '${_turnText(g.turn)} · ${CrosswordLevel.fromName(g.difficulty).label}';
   }
 
   String _turnText(String? turn) =>

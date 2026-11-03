@@ -353,6 +353,8 @@ void _showWisdom(BuildContext context, Wisdom w) {
 }
 
 /// Der nächste Countdown als Ticket zwischen zwei Pflaumen-Rollen.
+const _ticketTag = 'countdown-ticket';
+
 class _NextCountdown extends StatelessWidget {
   const _NextCountdown({required this.couple});
 
@@ -397,10 +399,16 @@ class _NextCountdown extends StatelessWidget {
         final ticket = Material(
           color: Kitsune.paper,
           child: InkWell(
+            // Das Ticket zieht sich fliessend zur Countdown-Seite auf.
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => CountdownScreen(couple: couple),
-              ),
+              reduceMotion(context)
+                  ? MaterialPageRoute<void>(
+                      builder: (_) => CountdownScreen(couple: couple),
+                    )
+                  : ExpandRoute<void>(
+                      builder: (_) =>
+                          CountdownScreen(couple: couple, heroTag: _ticketTag),
+                    ),
             ),
             child: Container(
               // Doppelter Rahmen: Creme-Rand, dann feine nachtblaue Linie.
@@ -490,7 +498,9 @@ class _NextCountdown extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               rail(true),
-              Expanded(child: ticket),
+              Expanded(
+                child: ExpandHero(tag: _ticketTag, child: ticket),
+              ),
               rail(false),
             ],
           ),

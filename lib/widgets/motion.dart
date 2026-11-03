@@ -163,3 +163,104 @@ class SoftPageTransitionsBuilder extends PageTransitionsBuilder {
     );
   }
 }
+
+/// Karte, die sich beim Antippen fliessend zur ganzen Seite aufzieht
+/// (und beim Zurück wieder zur Karte wird). Die Zielseite umschliesst ihren
+/// Inhalt mit [ExpandHero] und demselben [tag]; geöffnet wird mit [ExpandRoute].
+class ExpandHero extends StatelessWidget {
+  const ExpandHero({
+    super.key,
+    required this.tag,
+    required this.child,
+    this.from = const Color(0xFFF3EBD3),
+    this.to = const Color(0xFF0E1F4D),
+    this.radius = 6,
+  });
+
+  final Object tag;
+  final Widget child;
+
+  /// Farbe der Karte und der Zielseite – dazwischen wird weich überblendet.
+  final Color from;
+  final Color to;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) => Hero(
+    tag: tag,
+    createRectTween: (a, b) => _SmoothRectTween(begin: a, end: b),
+    flightShuttleBuilder: _shuttle,
+    child: child,
+  );
+
+  Widget _shuttle(
+    BuildContext flight,
+    Animation<double> animation,
+    HeroFlightDirection direction,
+    BuildContext fromContext,
+    BuildContext toContext,
+  ) {
+    final push = direction == HeroFlightDirection.push;
+    final cardContext = push ? fromContext : toContext;
+    final card = (cardContext.widget as Hero).child;
+    final page = ((push ? toContext : fromContext).widget as Hero).child;
+    final cardSize =
+        (cardContext.findRenderObject() as RenderBox?)?.size ?? Size.zero;
+    final screen = MediaQuery.sizeOf(flight);
+    // Beide Inhalte behalten ihre echte Grösse; nur der Ausschnitt wächst mit.
+    Widget fixed(Size size, Widget child) => OverflowBox(
+      alignment: Alignment.topCenter,
+      minWidth: size.width,
+      maxWidth: size.width,
+      minHeight: size.height,
+      maxHeight: size.height,
+      child: child,
+    );
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) {
+        final t = animation.value;
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(radius * (1 - t)),
+          child: ColoredBox(
+            color: Color.lerp(from, to, Curves.easeOut.transform(t))!,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Karte blendet in der ersten Hälfte aus, die Seite danach ein.
+                Opacity(
+                  opacity: (1 - t * 2.2).clamp(0.0, 1.0),
+                  child: fixed(cardSize, card),
+                ),
+                Opacity(
+                  opacity: ((t - 0.3) / 0.7).clamp(0.0, 1.0),
+                  child: fixed(screen, page),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Gerade, weich beschleunigte Bahn (ohne den Bogen des Standard-Hero).
+class _SmoothRectTween extends RectTween {
+  _SmoothRectTween({super.begin, super.end});
+
+  @override
+  Rect? lerp(double t) =>
+      Rect.lerp(begin, end, Curves.easeInOutCubic.transform(t));
+}
+
+/// Seite, die nur über [ExpandHero] erscheint (kein zusätzliches Gleiten).
+class ExpandRoute<T> extends PageRouteBuilder<T> {
+  ExpandRoute({required WidgetBuilder builder})
+    : super(
+        transitionDuration: const Duration(milliseconds: 480),
+        reverseTransitionDuration: const Duration(milliseconds: 420),
+        pageBuilder: (context, _, _) => builder(context),
+        transitionsBuilder: (context, animation, _, child) => child,
+      );
+}

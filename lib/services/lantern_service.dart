@@ -80,8 +80,27 @@ class LanternService {
     'lanternsSeenAt': FieldValue.serverTimestamp(),
   }, SetOptions(merge: true));
 
-  /// Gibt es zu [l] eine Laterne der anderen Person im Gleichzeitig-Fenster?
-  static bool isSync(Lantern l, List<Lantern> all) => all.any(
-    (o) => o.from != l.from && o.at.difference(l.at).abs() <= syncWindow,
-  );
+  /// Wie viele Gleichzeitig-Momente gab es? Zwei Laternen von euch beiden
+  /// höchstens 5 Minuten auseinander = ein Moment; weitere Laternen kurz danach
+  /// zählen nicht nochmal.
+  static int syncMoments(List<Lantern> all) {
+    final sorted = [...all]..sort((a, b) => a.at.compareTo(b.at));
+    var count = 0;
+    DateTime? lastMoment;
+    for (var i = 1; i < sorted.length; i++) {
+      final a = sorted[i - 1], b = sorted[i];
+      if (a.from != b.from &&
+          b.at.difference(a.at) <= syncWindow &&
+          (lastMoment == null || a.at.difference(lastMoment) > syncWindow)) {
+        count++;
+        lastMoment = b.at;
+      }
+    }
+    return count;
+  }
+
+  /// Entsteht durch [added] ein neuer Gleichzeitig-Moment? (Dann wird gefeiert –
+  /// jeder Moment genau einmal.)
+  static bool addsSyncMoment(List<Lantern> before, List<Lantern> added) =>
+      syncMoments([...before, ...added]) > syncMoments(before);
 }

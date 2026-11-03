@@ -288,7 +288,8 @@ service cloud.firestore {
         allow create: if isMember(coupleId) &&
           request.resource.data.keys().hasOnly(
             ['status', 'turn', 'createdBy', 'createdAt', 'updatedAt', 'size', 'words',
-             'solved', 'attempts', 'hintsUsed', 'revealed']) &&
+             'solved', 'attempts', 'hintsUsed', 'revealed', 'difficulty']) &&
+          request.resource.data.get('difficulty', 'medium') in ['easy', 'medium', 'hard'] &&
           request.resource.data.status == 'playing' &&
           request.resource.data.createdBy == request.auth.uid &&
           request.resource.data.turn == request.auth.uid &&
@@ -299,7 +300,9 @@ service cloud.firestore {
           request.resource.data.solved == {} &&
           request.resource.data.attempts == 0 &&
           request.resource.data.hintsUsed == 0 &&
-          request.resource.data.revealed == [] &&
+          // «Einfach» schenkt zum Start bis zu 2 Buchstaben.
+          request.resource.data.revealed is list &&
+          request.resource.data.revealed.size() <= 2 &&
           request.resource.data.createdAt == request.time &&
           request.resource.data.updatedAt == request.time;
         // Zug: nur wer dran ist; danach ist der Schatz dran. Gelöste Wörter bleiben gelöst.
@@ -319,6 +322,20 @@ service cloud.firestore {
           request.resource.data.revealed is list &&
           request.resource.data.revealed.hasAll(resource.data.revealed) &&
           request.resource.data.updatedAt == request.time;
+      }
+
+      // Verstecktes Kanji des Tages: jede Person trägt nur sich selbst als
+      // «gefunden» ein (mit Serverzeit), nichts wird gelöscht.
+      match /eggs/{day} {
+        allow read: if isMember(coupleId);
+        allow create, update: if isMember(coupleId) &&
+          day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+          request.resource.data.keys().hasOnly(['found']) &&
+          request.resource.data.found is map &&
+          request.resource.data.found
+            .diff(resource == null ? {} : resource.data.found)
+            .affectedKeys().hasOnly([request.auth.uid]) &&
+          request.resource.data.found[request.auth.uid] == request.time;
       }
 
       // "schreibt…"-Anzeige: lesen beide, schreiben nur das eigene Dokument.

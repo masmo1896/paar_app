@@ -24,6 +24,7 @@ class CrosswordGame {
     required this.revealed,
     required this.attempts,
     required this.hintsUsed,
+    this.difficulty = 'medium',
   });
 
   factory CrosswordGame.fromDoc(DocumentSnapshot<Map<String, dynamic>> d) {
@@ -44,6 +45,7 @@ class CrosswordGame {
       },
       attempts: (m['attempts'] as num?)?.toInt() ?? 0,
       hintsUsed: (m['hintsUsed'] as num?)?.toInt() ?? 0,
+      difficulty: m['difficulty'] as String? ?? 'medium',
     );
   }
 
@@ -60,6 +62,9 @@ class CrosswordGame {
   final Set<int> revealed;
   final int attempts;
   final int hintsUsed;
+
+  /// 'easy', 'medium' oder 'hard' (ältere Rätsel: 'medium').
+  final String difficulty;
 
   bool get isDone => status == 'done';
   double get progress => words.isEmpty ? 0 : solved.length / words.length;
@@ -115,20 +120,26 @@ class CrosswordService {
   );
 
   /// Neues Rätsel; wer es startet, beginnt.
-  Future<void> newGame(String coupleId, int size, List<CrosswordWord> words) =>
-      _games(coupleId).add({
-        'status': 'playing',
-        'turn': _uid,
-        'createdBy': _uid,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'size': size,
-        'words': [for (final w in words) w.toMap()],
-        'solved': <String, dynamic>{},
-        'attempts': 0,
-        'hintsUsed': 0,
-        'revealed': <int>[],
-      });
+  Future<void> newGame(
+    String coupleId,
+    int size,
+    List<CrosswordWord> words, {
+    String difficulty = 'medium',
+    List<int> revealed = const [],
+  }) => _games(coupleId).add({
+    'difficulty': difficulty,
+    'status': 'playing',
+    'turn': _uid,
+    'createdBy': _uid,
+    'createdAt': FieldValue.serverTimestamp(),
+    'updatedAt': FieldValue.serverTimestamp(),
+    'size': size,
+    'words': [for (final w in words) w.toMap()],
+    'solved': <String, dynamic>{},
+    'attempts': 0,
+    'hintsUsed': 0,
+    'revealed': revealed,
+  });
 
   /// Ein Wort raten. Richtig oder falsch – danach ist der Schatz dran.
   /// Gibt zurück, ob es richtig war.

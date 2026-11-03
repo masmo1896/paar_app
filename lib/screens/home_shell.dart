@@ -8,6 +8,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../services/couple_service.dart';
 import '../services/push_service.dart';
 import '../theme.dart';
+import '../widgets/hidden_kanji.dart';
 import '../widgets/motion.dart';
 import '../widgets/who.dart';
 import 'calendar_screen.dart';
@@ -42,6 +43,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     push.startIfEnabled();
     push.requestedTab.addListener(_openRequestedTab);
     WidgetsBinding.instance.addObserver(this);
+    // Kopfzeilen-Bilder im Hintergrund vorladen (flüssige Seitenwechsel).
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => KitsuneArt.precacheAll(),
+    );
     // Ist die App offen, zeigen wir bewusst keinen eigenen Hinweis – Benachrichtigungen
     // erscheinen nur als normale System-Mitteilung, wenn die App im Hintergrund ist.
     // Falls die App durch eine Benachrichtigung gestartet wurde, noch bevor wir lauschten.
@@ -122,31 +127,43 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   Widget _scaffold(Couple couple) {
     return Scaffold(
-      body: IndexedStack(
-        index: _tab,
+      body: Stack(
         children: [
-          for (final (i, page) in [
-            HomeScreen(couple: couple, onOpenTab: _open, active: _tab == 0),
-            ChatScreen(
-              coupleId: widget.coupleId,
-              active: _tab == 1,
-              onBack: () => _open(_previousTab),
-            ),
-            CalendarScreen(couple: couple),
-            TodoScreen(couple: couple),
-            UsScreen(couple: couple),
-          ].indexed)
-            // Versteckte Bereiche: Animationen anhalten (spart Akku und
-            // verhindert Ruckeln) und in eigener Ebene halten.
-            TickerMode(
-              enabled: i == _tab,
-              child: RepaintBoundary(
-                child: _TabFade(active: i == _tab, child: page),
-              ),
-            ),
+          Positioned.fill(child: _pages(couple)),
+          // Das versteckte Kanji des Tages liegt über dem aktuellen Bereich.
+          Positioned.fill(
+            child: HiddenKanjiLayer(couple: couple, tab: _tab),
+          ),
         ],
       ),
       bottomNavigationBar: _KitsuneNav(selected: _tab, onSelect: _open),
+    );
+  }
+
+  Widget _pages(Couple couple) {
+    return IndexedStack(
+      index: _tab,
+      children: [
+        for (final (i, page) in [
+          HomeScreen(couple: couple, onOpenTab: _open, active: _tab == 0),
+          ChatScreen(
+            coupleId: widget.coupleId,
+            active: _tab == 1,
+            onBack: () => _open(_previousTab),
+          ),
+          CalendarScreen(couple: couple),
+          TodoScreen(couple: couple),
+          UsScreen(couple: couple),
+        ].indexed)
+          // Versteckte Bereiche: Animationen anhalten (spart Akku und
+          // verhindert Ruckeln) und in eigener Ebene halten.
+          TickerMode(
+            enabled: i == _tab,
+            child: RepaintBoundary(
+              child: _TabFade(active: i == _tab, child: page),
+            ),
+          ),
+      ],
     );
   }
 

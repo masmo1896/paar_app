@@ -43,10 +43,16 @@ class CrosswordScreen extends StatelessWidget {
   }
 }
 
-Future<void> _newPuzzle(Couple couple) async {
-  final p = generateCrossword();
+Future<void> _newPuzzle(Couple couple, CrosswordLevel level) async {
+  final r = generateForLevel(level);
   try {
-    await CrosswordService.instance.newGame(couple.coupleId, p.size, p.words);
+    await CrosswordService.instance.newGame(
+      couple.coupleId,
+      r.puzzle.size,
+      r.puzzle.words,
+      difficulty: level.name,
+      revealed: r.revealed,
+    );
   } catch (e, s) {
     AppLogger.error(e, s, where: 'Kreuzwort: neues Rätsel');
   }
@@ -79,14 +85,105 @@ class _Start extends StatelessWidget {
             style: const TextStyle(color: Kitsune.mist),
           ),
           const SizedBox(height: 22),
-          FilledButton.icon(
-            onPressed: () => _newPuzzle(couple),
-            icon: const Icon(Icons.auto_awesome_rounded),
-            label: const Text('Rätsel starten'),
-          ),
+          _LevelPicker(onPick: (level) => _newPuzzle(couple, level)),
         ],
       ),
     ),
+  );
+}
+
+/// Drei gleich grosse Knöpfe: Einfach / Mittel / Schwer.
+class _LevelPicker extends StatefulWidget {
+  const _LevelPicker({required this.onPick});
+
+  final Future<void> Function(CrosswordLevel level) onPick;
+
+  @override
+  State<_LevelPicker> createState() => _LevelPickerState();
+}
+
+class _LevelPickerState extends State<_LevelPicker> {
+  CrosswordLevel? _busy;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      for (final level in CrosswordLevel.values)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Material(
+            color: level == CrosswordLevel.medium
+                ? Kitsune.paper
+                : Kitsune.deep.withValues(alpha: 0.85),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(6),
+              side: const BorderSide(color: Color(0x4DF3EBD3)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: _busy != null
+                  ? null
+                  : () async {
+                      setState(() => _busy = level);
+                      await widget.onPick(level);
+                      if (mounted) setState(() => _busy = null);
+                    },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    Hanko(
+                      switch (level) {
+                        CrosswordLevel.easy => '易',
+                        CrosswordLevel.medium => '中',
+                        CrosswordLevel.hard => '難',
+                      },
+                      size: 26,
+                      filled: level != CrosswordLevel.easy,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            level.label,
+                            style: AppTheme.serif(
+                              size: 17,
+                              color: level == CrosswordLevel.medium
+                                  ? Kitsune.night
+                                  : Kitsune.paper,
+                            ),
+                          ),
+                          Text(
+                            level.description,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: level == CrosswordLevel.medium
+                                  ? Kitsune.inkSoft
+                                  : Kitsune.mist,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_busy == level)
+                      const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+    ],
   );
 }
 
@@ -279,6 +376,7 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
         ),
         const SizedBox(height: 4),
         Text(
+          '${CrosswordLevel.fromName(g.difficulty).label} · '
           '${g.solved.length} von ${g.words.length} Wörtern · '
           '${g.attempts} ${g.attempts == 1 ? 'Versuch' : 'Versuche'} · '
           '${g.hintsUsed} ${g.hintsUsed == 1 ? 'Hinweis' : 'Hinweise'}',
@@ -324,15 +422,14 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
             textAlign: TextAlign.center,
             style: AppTheme.serif(size: 20),
           ),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(50),
-            ),
-            onPressed: () => _newPuzzle(widget.couple),
-            icon: const Icon(Icons.auto_awesome_rounded),
-            label: const Text('Neues Rätsel'),
+          const SizedBox(height: 6),
+          Text(
+            'Neues Rätsel – wie knifflig?',
+            textAlign: TextAlign.center,
+            style: AppTheme.label(),
           ),
+          const SizedBox(height: 12),
+          _LevelPicker(onPick: (level) => _newPuzzle(widget.couple, level)),
           const SizedBox(height: 18),
         ],
         _ClueList(

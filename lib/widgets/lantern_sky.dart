@@ -2,19 +2,27 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../services/couple_service.dart';
+import '../services/planner_service.dart';
+import '../utils/daily_magic.dart';
 import '../services/lantern_service.dart';
 import '../theme.dart';
+import 'heart_rain.dart';
+import 'sky_extras.dart';
 import 'who.dart';
 import 'motion.dart';
 import '../services/app_logger.dart';
 
-/// Unser Laternenhimmel: Jede Laterne heisst "Ich denk an dich" und bleibt für
-/// immer am Himmel – deine rot, die deines Schatzes aqua.
+/// Unser Laternenhimmel: Jede Laterne heisst "Ich denk an dich" und schwebt
+/// bis Mitternacht am Himmel – deine rot, die deines Schatzes aqua.
 ///
 /// - Antippen des Knopfs lässt eine Laterne aufsteigen.
 /// - Kommen neue Laternen deines Schatzes an, bringt sie ein kleiner Fuchs-Bote.
@@ -43,11 +51,20 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
   bool _profileLoaded = false;
   DateTime? _seenAt;
 
-  // Sanftes Schweben aller Laternen.
-  late final _float = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 6),
-  )..repeat();
+  // Endloses Schweben: läuft auf der echten Zeit (Sekunden seit Start), damit
+  // es nie an einem Loop-Ende springt. Jede Laterne rechnet daraus ihre eigene
+  // Bewegung (siehe _SkyPainter.drift).
+  late final Ticker _clock = createTicker(
+    (elapsed) => _time.value = elapsed.inMicroseconds / 1e6,
+  );
+  final _time = ValueNotifier<double>(0);
+
+  // Tägliche Überraschungen.
+  StreamSubscription<List<Countdown>>? _countdownSub;
+  int? _months; // heute Monatstag? Dann so viele Monate zusammen.
+  final _starActive = ValueNotifier<bool>(false);
+  Timer? _starTimer;
+  String? _foxSays; // Sprechblase des Tagesfuchses
   // Eigene Laterne steigt auf.
   late final _fly = AnimationController(
     vsync: this,
@@ -75,6 +92,23 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _subscribeToday();
+    // Monatstag: aus dem jährlichen ❤️/💍-Countdown (wie auf der Wir-Seite).
+    _countdownSub = PlannerService.instance.countdowns(_coupleId).listen((all) {
+      final yearly = all.where((c) => c.yearly).toList()
+        ..sort((a, b) {
+          int score(Countdown c) => ['❤️', '💍'].contains(c.emoji) ? 0 : 1;
+          return score(a).compareTo(score(b));
+        });
+      final months = yearly.isEmpty
+          ? null
+          : monthiversary(yearly.first.date, DateTime.now());
+      if (months != _months && mounted) setState(() => _months = months);
+    });
+    _checkStar();
+    _starTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _checkStar(),
+    );
     _profileSub = CoupleService.instance.myProfileStream().listen((me) {
       // Nur übernehmen, wenn es neuer ist (lokal setzen wir es schon vorher).
       final at = (me?['lanternsSeenAt'] as Timestamp?)?.toDate();
@@ -118,9 +152,9 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (reduceMotion(context)) {
-      _float.stop();
-    } else if (!_float.isAnimating) {
-      _float.repeat();
+      if (_clock.isActive) _clock.stop();
+    } else if (!_clock.isActive) {
+      _clock.start();
     }
   }
 
@@ -133,9 +167,13 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
   @override
   void dispose() {
     _midnight?.cancel();
+    _countdownSub?.cancel();
+    _starTimer?.cancel();
+    _starActive.dispose();
     _lanternSub?.cancel();
     _profileSub?.cancel();
-    _float.dispose();
+    _clock.dispose();
+    _time.dispose();
     _fly.dispose();
     _fox.dispose();
     _party.dispose();
@@ -158,7 +196,11 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
     }
     final unseen = _unseen;
     if (unseen.isEmpty) return;
-    final sync = unseen.any((l) => LanternService.isSync(l, _lanterns));
+    final unseenIds = {for (final l in unseen) l.id};
+    final sync = LanternService.addsSyncMoment([
+      for (final l in _lanterns)
+        if (!unseenIds.contains(l.id)) l,
+    ], unseen);
     setState(() {
       _foxLanternId = unseen.first.id;
       _foxCount = unseen.length;
@@ -177,13 +219,21 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
     if (_fly.isAnimating) return;
     HapticFeedback.mediumImpact();
     final id = _service.newId(_coupleId);
-    final partnerJustSent = _lanterns.any(
-      (l) =>
-          l.from != _me &&
-          DateTime.now().difference(l.at) <= LanternService.syncWindow,
-    );
+    final partnerJustSent = LanternService.addsSyncMoment(_lanterns, [
+      Lantern(id: id, from: _me, at: DateTime.now()),
+    ]);
     setState(() => _flyingId = id);
     final saving = _service.send(_coupleId, id);
+    if (isGoldenLantern(id)) {
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            '✨ Eine goldene Laterne! Das passiert nur etwa jedes 50. Mal.',
+          ),
+        ),
+      );
+    }
     await _fly.forward(from: 0);
     if (!mounted) return;
     setState(() => _flyingId = null);
@@ -199,26 +249,105 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
     }
   }
 
+  // ---- Sternschnuppe: ab ihrer Tageszeit, bis jemand sie hier fängt ----
+
+  String get _starKey => 'star_caught_${dayKey(DateTime.now())}';
+
+  Future<void> _checkStar() async {
+    final now = DateTime.now();
+    var caught = false;
+    try {
+      caught =
+          (await SharedPreferences.getInstance()).getBool(_starKey) ?? false;
+    } catch (_) {}
+    final active = !caught && !now.isBefore(shootingStarTime(now, _coupleId));
+    if (mounted) _starActive.value = active;
+  }
+
+  Future<void> _tapSky() async {
+    if (!_starActive.value || !ShootingStarPainter.flying(_time.value)) return;
+    _starActive.value = false;
+    HapticFeedback.heavyImpact();
+    await showFormSheet<void>(
+      context,
+      (_) => WishSheet(
+        partner: widget.couple.partnerLabel,
+        onSend: (wish) async {
+          // Erst jetzt gilt sie als gefangen (Fenster nur zu = sie kommt wieder).
+          try {
+            await (await SharedPreferences.getInstance()).setBool(
+              _starKey,
+              true,
+            );
+          } catch (_) {}
+          try {
+            await CoupleService.instance.sendMessage(
+              _coupleId,
+              wish == null
+                  ? '🌠 Ich habe eine Sternschnuppe gefangen und mir '
+                        'heimlich etwas für uns gewünscht ✨'
+                  : '🌠 Ich habe eine Sternschnuppe gefangen und wünsche '
+                        'mir: $wish',
+            );
+          } catch (e, s) {
+            AppLogger.error(e, s, where: 'Sternschnuppe: Wunsch senden');
+          }
+        },
+      ),
+    );
+    await _checkStar();
+  }
+
+  void _tapFox() {
+    final outfit = foxOutfitFor(DateTime.now());
+    HapticFeedback.selectionClick();
+    setState(() => _foxSays = 'Heute trage ich ${outfit.label} 🦊');
+    Future<void>.delayed(const Duration(milliseconds: 2600), () {
+      if (mounted) setState(() => _foxSays = null);
+    });
+  }
+
+  void _showMoon() {
+    final now = DateTime.now();
+    final pct = (moonIllumination(now) * 100).round();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            isFullMoon(now)
+                ? '🌕 Heute ist Vollmond – schaut beide hoch!'
+                : '🌙 Heute: ${moonName(now)} ($pct % beleuchtet)',
+          ),
+        ),
+      );
+  }
+
   void _celebrate() {
     HapticFeedback.heavyImpact();
     _party.forward(from: 0);
+    // Herzen über den ganzen Bildschirm.
+    HeartRain.show(context);
   }
 
   @override
   Widget build(BuildContext context) {
     if (widget.couple.partnerUid == null) return const SizedBox.shrink();
     final partner = widget.couple.partnerLabel;
-    final syncCount = _syncMoments(_lanterns);
+    final syncCount = LanternService.syncMoments(_lanterns);
 
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Kitsune.paper.withValues(alpha: 0.18)),
-        gradient: const LinearGradient(
+        // Am Monatstag färbt sich der Himmel rosa.
+        gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Kitsune.deeper, Kitsune.night],
+          colors: _months != null
+              ? const [Color(0xFF3B1640), Color(0xFF5A2350)]
+              : const [Kitsune.deeper, Kitsune.night],
         ),
       ),
       child: Column(
@@ -233,43 +362,50 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
                 return Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    // Sterne und Mond: einmal gemalt, bleiben stehen.
+                    // Sterne: einmal gemalt, bleiben stehen.
                     const Positioned.fill(
                       child: RepaintBoundary(
                         child: CustomPaint(painter: _StarsPainter()),
                       ),
                     ),
-                    // Laternen in 3 Gruppen. Jede Gruppe wird nur neu gemalt,
-                    // wenn sich Laternen ändern; das Schweben verschiebt nur
-                    // die fertige Ebene (kostet fast nichts).
-                    for (var g = 0; g < _SkyPainter.groups; g++)
-                      Positioned.fill(
-                        child: AnimatedBuilder(
-                          animation: _float,
-                          builder: (context, child) => Transform.translate(
-                            offset: Offset(
-                              0,
-                              math.sin(
-                                    (_float.value + g / _SkyPainter.groups) *
-                                        2 *
-                                        math.pi,
-                                  ) *
-                                  2.2,
-                            ),
-                            child: child,
-                          ),
-                          child: RepaintBoundary(
-                            child: CustomPaint(
-                              painter: _SkyPainter(
-                                lanterns: _lanterns,
-                                me: _me,
-                                hidden: hidden,
-                                group: g,
-                              ),
-                            ),
+                    // Der echte Mond von heute; antippen zeigt die Phase.
+                    Positioned(
+                      right: 14,
+                      top: 8,
+                      width: 40,
+                      height: 40,
+                      child: GestureDetector(
+                        onTap: _showMoon,
+                        child: CustomPaint(
+                          painter: MoonPainter(
+                            phase: moonPhase(DateTime.now()),
+                            center: const Offset(20, 20),
                           ),
                         ),
                       ),
+                    ),
+                    if (_months != null)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: RepaintBoundary(
+                            child: CustomPaint(painter: PetalPainter(_time)),
+                          ),
+                        ),
+                      ),
+                    // Alle Laternen in einer Ebene; nur diese wird pro Bild
+                    // neu gemalt (RepaintBoundary), der Rest bleibt ruhig.
+                    Positioned.fill(
+                      child: RepaintBoundary(
+                        child: CustomPaint(
+                          painter: _SkyPainter(
+                            lanterns: _lanterns,
+                            me: _me,
+                            hidden: hidden,
+                            time: _time,
+                          ),
+                        ),
+                      ),
+                    ),
                     // Titel oben links.
                     Positioned(
                       left: 14,
@@ -296,6 +432,47 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
                         ],
                       ),
                     ),
+                    // Sternschnuppe: Antippen des Himmels, während sie fliegt.
+                    // Nur aktiv, solange es heute eine gibt (sonst bleibt z. B.
+                    // der Mond antippbar).
+                    Positioned.fill(
+                      child: ValueListenableBuilder<bool>(
+                        valueListenable: _starActive,
+                        builder: (context, active, child) => GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onTap: active ? _tapSky : null,
+                          child: child,
+                        ),
+                        child: RepaintBoundary(
+                          child: CustomPaint(
+                            painter: ShootingStarPainter(
+                              _time,
+                              active: _starActive,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Fuchs des Tages lugt unten links hervor.
+                    if (_foxLanternId == null)
+                      Positioned(
+                        left: 12,
+                        bottom: -10,
+                        child: GestureDetector(
+                          onTap: _tapFox,
+                          child: DailyFox(
+                            outfit: foxOutfitFor(DateTime.now()),
+                            time: _time,
+                          ),
+                        ),
+                      ),
+                    if (_foxSays case final text?)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 40,
+                        child: Center(child: _Bubble(text: text)),
+                      ),
                     // Aufsteigende Laterne, Fuchs-Bote, Feuerwerk: nur diese
                     // Ebene läuft mit, und nur solange etwas passiert.
                     Positioned.fill(
@@ -330,7 +507,9 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _lanterns.isEmpty
+                        _months != null
+                            ? '🌸 Heute: $_months Monate zusammen'
+                            : _lanterns.isEmpty
                             ? 'Lass die erste Laterne steigen'
                             : '${_lanterns.length} '
                                   '${_lanterns.length == 1 ? 'Laterne' : 'Laternen'}'
@@ -378,37 +557,30 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
     );
   }
 
-  /// Wie viele Gleichzeitig-Momente gab es? (Jedes Paar nur einmal gezählt.)
-  int _syncMoments(List<Lantern> all) {
-    final sorted = [...all]..sort((a, b) => a.at.compareTo(b.at));
-    var count = 0;
-    DateTime? lastMoment;
-    for (var i = 1; i < sorted.length; i++) {
-      final a = sorted[i - 1], b = sorted[i];
-      if (a.from != b.from &&
-          b.at.difference(a.at) <= LanternService.syncWindow &&
-          (lastMoment == null ||
-              a.at.difference(lastMoment) > LanternService.syncWindow)) {
-        count++;
-        lastMoment = b.at;
-      }
-    }
-    return count;
-  }
-
   /// Eigene Laterne steigt vom Knopf unten rechts zu ihrem Platz am Himmel.
   Widget _flyingLantern(Size size, String id) {
-    final t = Curves.easeInOutCubic.transform(_fly.value);
-    final target = _SkyPainter.positionOf(id, size);
+    final v = _fly.value;
+    // Weich los, weich an; landet genau dort, wo sie danach weiterschwebt.
+    final t = _riseCurve.transform(v);
+    final target =
+        _SkyPainter.positionOf(id, size) + _SkyPainter.drift(id, _time.value);
     final start = Offset(size.width - 36, size.height + 30);
-    // Leicht geschwungene Bahn: seitliches Pendeln beim Aufsteigen.
-    final sway = math.sin(_fly.value * math.pi * 3) * 10 * (1 - _fly.value);
+    // Leicht geschwungene Bahn, die zum Ende hin ausklingt.
+    final sway = math.sin(v * math.pi * 2.5) * 12 * (1 - t);
     final pos = Offset.lerp(start, target, t)! + Offset(sway, 0);
-    final scale = 1.8 - 0.8 * t;
+    // Endgrösse = Grösse der neuesten Laterne am Himmel (kein Aufploppen).
+    final scale = 1.8 - (1.8 - _SkyPainter.newestSize) * t;
     return Positioned(
       left: pos.dx - 12 * scale,
-      top: pos.dy - 16 * scale,
-      child: _LanternIcon(color: Kitsune.lantern, scale: scale, glow: 1),
+      top: pos.dy - 17 * scale,
+      child: Transform.rotate(
+        angle: math.cos(v * math.pi * 2.5) * 0.12 * (1 - t),
+        child: _LanternIcon(
+          color: isGoldenLantern(id) ? lanternGold : Kitsune.lantern,
+          scale: scale,
+          glow: 1,
+        ),
+      ),
     );
   }
 
@@ -439,14 +611,15 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
     final mouth = Offset(x + foxW * 0.9, foxTop + foxH * 0.56);
 
     // Laterne: bis 0.38 im Maul, dann steigt sie bis 0.85 zu ihrem Platz.
-    final target = _SkyPainter.positionOf(id, size);
+    final target =
+        _SkyPainter.positionOf(id, size) + _SkyPainter.drift(id, _time.value);
     final lift = ((v - 0.38) / 0.47).clamp(0.0, 1.0);
-    final lt = Curves.easeInOut.transform(lift);
+    final lt = _riseCurve.transform(lift);
     final lanternPos = lift == 0
         ? mouth + const Offset(0, 6)
         : Offset.lerp(mouth, target, lt)! +
               Offset(math.sin(lift * math.pi * 3) * 8 * (1 - lift), 0);
-    final lanternScale = 1.1 - 0.1 * lt;
+    final lanternScale = 1.1 - (1.1 - _SkyPainter.newestSize) * lt;
 
     final textOpacity = v < 0.08
         ? v / 0.08
@@ -467,9 +640,9 @@ class _LanternSkyState extends State<LanternSky> with TickerProviderStateMixin {
       ),
       Positioned(
         left: lanternPos.dx - 12 * lanternScale,
-        top: lanternPos.dy - 16 * lanternScale,
+        top: lanternPos.dy - 17 * lanternScale,
         child: _LanternIcon(
-          color: Kitsune.aqua,
+          color: isGoldenLantern(id) ? lanternGold : Kitsune.aqua,
           scale: lanternScale,
           glow: lift,
         ),
@@ -594,6 +767,18 @@ class _LanternIconPainter extends CustomPainter {
       old.color != color || old.glow != glow;
 }
 
+final _glowShaders = <Color, Shader>{};
+
+Shader _glowShader(Color color) => _glowShaders.putIfAbsent(
+  color,
+  () => RadialGradient(
+    colors: [color.withValues(alpha: 0.45), color.withValues(alpha: 0)],
+  ).createShader(Rect.fromCircle(center: Offset.zero, radius: 16)),
+);
+
+/// Weich los, weich an – ohne Knick (für aufsteigende Laternen).
+const _riseCurve = Cubic(0.45, 0.05, 0.2, 1.0);
+
 /// Zeichnet eine Laterne mit Mittelpunkt [c]; Grundgrösse ca. 14 × 18 bei [size] 1.
 void _paintLantern(
   Canvas canvas,
@@ -603,17 +788,19 @@ void _paintLantern(
   double glow,
 ) {
   if (glow > 0) {
+    // Schein: ein fertiger Verlauf je Farbe (einmal erzeugt), nur verschoben
+    // und skaliert – günstig, auch bei vielen Laternen in jedem Bild.
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.scale(size);
     canvas.drawCircle(
-      c,
-      16 * size,
+      Offset.zero,
+      16,
       Paint()
-        ..shader = RadialGradient(
-          colors: [
-            color.withValues(alpha: 0.45 * glow),
-            color.withValues(alpha: 0),
-          ],
-        ).createShader(Rect.fromCircle(center: c, radius: 16 * size)),
+        ..shader = _glowShader(color)
+        ..color = Color.fromRGBO(0, 0, 0, glow.clamp(0.0, 1.0)),
     );
+    canvas.restore();
   }
   final body = RRect.fromRectAndRadius(
     Rect.fromCenter(center: c, width: 14 * size, height: 16 * size),
@@ -651,7 +838,7 @@ void _paintLantern(
   );
 }
 
-/// Sterne und Mondsichel – ändern sich nie, werden nur einmal gemalt.
+/// Sterne – ändern sich nie, werden nur einmal gemalt (Mond: MoonPainter).
 class _StarsPainter extends CustomPainter {
   const _StarsPainter();
 
@@ -674,46 +861,50 @@ class _StarsPainter extends CustomPainter {
           ),
       );
     }
-    final moon = Offset(size.width - 34, 28);
-    canvas.drawCircle(moon, 13, Paint()..color = Kitsune.paper);
-    canvas.drawCircle(
-      moon + const Offset(-6, -4),
-      12,
-      Paint()..color = Kitsune.deeper,
-    );
   }
 
   @override
   bool shouldRepaint(_StarsPainter old) => false;
 }
 
-/// Eine von [groups] Laternen-Gruppen (Laterne Nr. i gehört zu Gruppe i % groups).
-/// Wird nur neu gemalt, wenn sich die Laternen oder die versteckten ändern.
+/// Alle Laternen am Himmel. Jede schwebt endlos auf ihrer eigenen Bahn:
+/// ruhiges Auf und Ab, leichtes Pendeln und flackerndes Licht – mit eigenem
+/// Tempo und Versatz aus ihrer ID, damit nichts im Gleichschritt läuft.
 class _SkyPainter extends CustomPainter {
   _SkyPainter({
     required this.lanterns,
     required this.me,
     required this.hidden,
-    required this.group,
-  });
+    required this.time,
+  }) : super(repaint: time);
 
   final List<Lantern> lanterns;
   final String me;
   final Set<String> hidden;
-  final int group;
-
-  static const groups = 3;
+  final ValueListenable<double> time;
 
   /// Höchstens so viele Laternen zeichnen (die neuesten).
   static const _maxDrawn = 120;
 
-  /// Fester Platz am Himmel für eine Laterne, aus ihrer ID berechnet –
-  /// so steht jede Laterne bei euch beiden an derselben Stelle.
-  static Offset positionOf(String id, Size size) {
+  /// Grösse der neuesten Laterne (ältere sind etwas kleiner).
+  static const newestSize = 0.8;
+
+  static int _hash(String id) {
     var h = 0;
     for (final c in id.codeUnits) {
       h = (h * 31 + c) & 0x7fffffff;
     }
+    return h;
+  }
+
+  // Zufallszahl 0–1 aus der ID, für Tempo und Versatz je Laterne.
+  static double _r(int h, int salt) =>
+      ((h ~/ (salt * 7 + 3) + salt * 977) % 1000) / 1000;
+
+  /// Fester Platz am Himmel für eine Laterne, aus ihrer ID berechnet –
+  /// so steht jede Laterne bei euch beiden an derselben Stelle.
+  static Offset positionOf(String id, Size size) {
+    final h = _hash(id);
     final rx = (h % 1000) / 1000;
     final ry = ((h ~/ 1000) % 1000) / 1000;
     // Oben links ist der Titel, unten bleibt Platz für Fuchs und Knopf.
@@ -723,21 +914,62 @@ class _SkyPainter extends CustomPainter {
     return Offset(x, y);
   }
 
+  /// Schwebe-Versatz zur Zeit [t] (Sekunden): langsames Auf und Ab (5–8 s)
+  /// und seitliches Treiben (8–14 s). Reiner Sinus der Zeit → nahtlos endlos.
+  static Offset drift(String id, double t) {
+    final h = _hash(id);
+    const tau = 2 * math.pi;
+    final bob = math.sin(tau * (0.12 + 0.07 * _r(h, 1)) * t + tau * _r(h, 2));
+    final side = math.sin(tau * (0.07 + 0.05 * _r(h, 3)) * t + tau * _r(h, 4));
+    return Offset(side * (1.5 + 1.5 * _r(h, 5)), bob * (3 + 2.5 * _r(h, 6)));
+  }
+
+  /// Leichtes Pendeln um den oberen Deckel (Bogenmass).
+  static double _tilt(String id, double t) {
+    final h = _hash(id);
+    return math.sin(
+          2 * math.pi * (0.15 + 0.1 * _r(h, 7)) * t + 2 * math.pi * _r(h, 8),
+        ) *
+        (0.05 + 0.04 * _r(h, 9));
+  }
+
+  /// Sanftes Flackern des Lichts (0.78–1.0), zwei überlagerte Wellen.
+  static double _flicker(String id, double t) {
+    final h = _hash(id);
+    final a = math.sin(2 * math.pi * 0.8 * t + 6 * _r(h, 10));
+    final b = math.sin(2 * math.pi * 2.1 * t + 6 * _r(h, 11));
+    return 0.89 + 0.07 * a + 0.04 * b;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
+    final t = time.value;
     // Älteste zuerst, damit neue obenauf liegen; neuere etwas grösser und heller.
     final drawn = lanterns.take(_maxDrawn).toList().reversed.toList();
     for (var i = 0; i < drawn.length; i++) {
       final l = drawn[i];
-      if (i % groups != group || hidden.contains(l.id)) continue;
+      if (hidden.contains(l.id)) continue;
       final fresh = (i + 1) / drawn.length;
+      final scale = newestSize - 0.25 + 0.25 * fresh;
+      final c = positionOf(l.id, size) + drift(l.id, t);
+      canvas.save();
+      // Drehen um den oberen Deckel, damit es wie Pendeln aussieht.
+      final pivot = c + Offset(0, -8.5 * scale);
+      canvas.translate(pivot.dx, pivot.dy);
+      canvas.rotate(_tilt(l.id, t));
+      canvas.translate(-pivot.dx, -pivot.dy);
       _paintLantern(
         canvas,
-        positionOf(l.id, size),
-        l.from == me ? Kitsune.lantern : Kitsune.aqua,
-        0.55 + 0.25 * fresh,
-        0.5 + 0.5 * fresh,
+        c,
+        isGoldenLantern(l.id)
+            ? lanternGold
+            : l.from == me
+            ? Kitsune.lantern
+            : Kitsune.aqua,
+        scale,
+        (0.5 + 0.5 * fresh) * _flicker(l.id, t),
       );
+      canvas.restore();
     }
   }
 
@@ -745,7 +977,6 @@ class _SkyPainter extends CustomPainter {
   bool shouldRepaint(_SkyPainter old) =>
       !identical(old.lanterns, lanterns) ||
       old.me != me ||
-      old.group != group ||
       old.hidden.length != hidden.length ||
       !old.hidden.containsAll(hidden);
 }

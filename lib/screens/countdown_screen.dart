@@ -3,17 +3,26 @@ import 'package:flutter/material.dart';
 import '../services/planner_service.dart';
 import '../theme.dart';
 import '../utils/dates.dart';
+import '../widgets/motion.dart';
 import '../widgets/who.dart';
 
 /// Countdowns zu wichtigen Tagen: Urlaub, Jahrestag, Geburtstag …
 /// Der nächste steht gross oben, vergangene einmalige Tage unten bei "Vergangen".
 class CountdownScreen extends StatelessWidget {
-  const CountdownScreen({super.key, required this.couple});
+  const CountdownScreen({super.key, required this.couple, this.heroTag});
 
   final Couple couple;
 
+  /// Von der Home-Karte geöffnet: Seite zieht sich aus der Karte auf.
+  final Object? heroTag;
+
   @override
   Widget build(BuildContext context) {
+    final page = _page(context);
+    return heroTag == null ? page : ExpandHero(tag: heroTag!, child: page);
+  }
+
+  Widget _page(BuildContext context) {
     return Scaffold(
       appBar: kitsuneAppBar(
         art: KitsuneArt.lanterns,
@@ -73,6 +82,8 @@ class CountdownScreen extends StatelessWidget {
         },
       ),
       floatingActionButton: FloatingActionButton(
+        // Kein eigener Hero: die ganze Seite fliegt schon als ExpandHero.
+        heroTag: null,
         tooltip: 'Countdown hinzufügen',
         onPressed: () => _edit(context, null),
         child: const Icon(Icons.add),

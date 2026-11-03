@@ -295,6 +295,15 @@ test('Kreuzwort: neues Rätsel nur mit sauberem Startzustand', async () => {
   await assertSucceeds(setDoc(cwPath(db(ME)), base));
 });
 
+test('Kreuzwort: Schwierigkeit nur einfach/mittel/schwer, höchstens 2 Startbuchstaben', async () => {
+  const words = [1, 2, 3, 4].map((i) => ({ id: `w${i}`, clue: 'c', answer: 'ABC', x: 0, y: i, across: true }));
+  const base = { status: 'playing', turn: ME, createdBy: ME, createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(), size: 9, words, solved: {}, attempts: 0, hintsUsed: 0, revealed: [] };
+  await assertFails(setDoc(cwPath(db(ME)), { ...base, difficulty: 'unmöglich' }));
+  await assertFails(setDoc(cwPath(db(ME)), { ...base, difficulty: 'easy', revealed: [1, 2, 3] }));
+  await assertSucceeds(setDoc(cwPath(db(ME)), { ...base, difficulty: 'easy', revealed: [1, 2] }));
+});
+
 test('Kreuzwort: Zug nur wer dran ist, danach ist der Schatz dran', async () => {
   await seedCrossword();
   const move = { solved: { w1: LOVE, w2: ME }, turn: LOVE, updatedAt: serverTimestamp() };
@@ -318,4 +327,16 @@ test('Spiele: Fremde sehen nichts', async () => {
   await assertFails(getDoc(bsPath(db(STRANGER))));
   await assertFails(getDoc(cwPath(db(STRANGER))));
   await assertSucceeds(getDoc(cwPath(db(LOVE))));
+});
+
+test('Verstecktes Kanji: nur sich selbst eintragen, Fremde nicht', async () => {
+  const egg = (u) => doc(db(u), 'couples', C, 'eggs', '2026-11-03');
+  await assertSucceeds(setDoc(egg(ME), { found: { [ME]: serverTimestamp() } }, { merge: true }));
+  await assertFails(setDoc(egg(ME), { found: { [LOVE]: serverTimestamp() } }, { merge: true }));
+  await assertFails(setDoc(egg(STRANGER), { found: { [STRANGER]: serverTimestamp() } }, { merge: true }));
+  await assertFails(getDoc(egg(STRANGER)));
+  await assertSucceeds(setDoc(egg(LOVE), { found: { [LOVE]: serverTimestamp() } }, { merge: true }));
+  await assertFails(setDoc(doc(db(ME), 'couples', C, 'eggs', 'hack'), { found: { [ME]: serverTimestamp() } }));
+  const d = (await getDoc(egg(ME))).data();
+  if (Object.keys(d.found).length !== 2) throw new Error('beide sollten eingetragen sein');
 });

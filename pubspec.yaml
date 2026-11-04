@@ -58,6 +58,7 @@ dependencies:
   open_filex: ^5.0.0
   firebase_crashlytics: ^6.0.1
   firebase_app_check: ^0.5.1
+  cloud_functions: ^7.0.1
 
 dev_dependencies:
   flutter_test:

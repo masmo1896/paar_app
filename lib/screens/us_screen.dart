@@ -13,6 +13,7 @@ import '../widgets/who.dart';
 import 'albums_screen.dart';
 import 'chat_media_screen.dart';
 import 'countdown_screen.dart';
+import 'legal_screen.dart';
 import 'us_features.dart';
 import 'us_sections.dart';
 import '../utils/shared_stream.dart';
@@ -51,8 +52,7 @@ class UsScreen extends StatelessWidget {
                     KitsuneArt.foxes.asset,
                     fit: BoxFit.cover,
                     alignment: Alignment.bottomCenter,
-                    semanticsLabel:
-                        'Zwei Füchse auf einer Brücke, ihre Schwänze bilden ein Herz',
+                    semanticsLabel: 'Zwei Füchse auf einer Brücke, ihre Schwänze bilden ein Herz',
                   ),
                 ),
                 Positioned(
@@ -287,7 +287,8 @@ class _Memories extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 itemCount: tiles.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 12),
-                itemBuilder: (context, i) => SizedBox(width: 96, child: tiles[i]),
+                itemBuilder: (context, i) =>
+                    SizedBox(width: 96, child: tiles[i]),
               ),
             );
           },
@@ -393,7 +394,8 @@ class _Polaroid extends StatelessWidget {
   }
 }
 
-/// Einstellungen: Benachrichtigungen, Jahrestag-Erinnerung, Design, Abmelden.
+/// Einstellungen: Benachrichtigungen, Jahrestag-Erinnerung, Design,
+/// Datenschutz, Lizenzen, Abmelden, Konto löschen.
 class _Settings extends StatelessWidget {
   const _Settings({required this.couple});
 
@@ -488,6 +490,22 @@ class _Settings extends StatelessWidget {
               ),
               divider,
               _Row(
+                icon: Icons.privacy_tip_outlined,
+                label: 'Datenschutz',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const PrivacyScreen(),
+                  ),
+                ),
+              ),
+              divider,
+              _Row(
+                icon: Icons.description_outlined,
+                label: 'Lizenzen',
+                onTap: () => showLicenses(context),
+              ),
+              divider,
+              _Row(
                 icon: Icons.logout_rounded,
                 iconColor: Kitsune.lantern,
                 label: 'Abmelden',
@@ -496,6 +514,13 @@ class _Settings extends StatelessWidget {
                   SharedStreams.clear(); // alte Verbindungen schliessen
                   await FirebaseAuth.instance.signOut();
                 },
+              ),
+              divider,
+              _Row(
+                icon: Icons.delete_forever_outlined,
+                iconColor: Kitsune.lantern,
+                label: 'Konto löschen',
+                onTap: () => confirmDeleteAccount(context),
               ),
             ],
           ),

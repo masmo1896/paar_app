@@ -2,9 +2,12 @@
 // Sie laufen bei Google (nicht auf dem Handy) und reagieren auf Änderungen in Firestore.
 const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
+const { getAuth } = require('firebase-admin/auth');
+const { getStorage } = require('firebase-admin/storage');
 const battleship = require('./battleship');
 
 initializeApp();
@@ -407,3 +410,41 @@ exports.onBattleShot = onDocumentCreated(
     });
   },
 );
+
+// ---------------------------------------------------------------------------
+// Konto löschen (verlangen Apple und Google). Die App fragt vorher nach dem
+// Passwort. Gelöscht wird das eigene Profil mit Profilbild und Push-Adressen
+// und der gemeinsame Bereich des Paares (Chat, Fotos, Termine, Spiele …) samt
+// Dateien – auch für den Schatz, sonst könnte jemand Neues mit dem alten Code
+// beitreten und alles lesen. Der Schatz behält sein Konto und landet wieder
+// auf der Verbinden-Seite.
+exports.deleteAccount = onCall({ region: REGION }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Nicht angemeldet');
+  const bucket = getStorage().bucket();
+  const userRef = db.collection('users').doc(uid);
+  const coupleId = (await userRef.get()).get('coupleId');
+
+  if (coupleId) {
+    const coupleRef = db.collection('couples').doc(coupleId);
+    const couple = await coupleRef.get();
+    const members = couple.get('members') || [];
+    // Nur ein echtes Mitglied darf den gemeinsamen Bereich löschen.
+    if (couple.exists && members.includes(uid)) {
+      for (const other of members.filter((m) => m !== uid)) {
+        await db.collection('users').doc(other)
+          .set({ coupleId: FieldValue.delete() }, { merge: true });
+      }
+      const code = couple.get('inviteCode');
+      if (code) await db.collection('invites').doc(code).delete();
+      await bucket.deleteFiles({ prefix: `couples/${coupleId}/` });
+      await db.recursiveDelete(coupleRef);
+    }
+  }
+
+  await bucket.deleteFiles({ prefix: `users/${uid}/` });
+  await db.recursiveDelete(userRef);
+  await getAuth().deleteUser(uid);
+  console.log('deleteAccount: Konto gelöscht', uid, coupleId || '(ohne Paar)');
+  return { ok: true };
+});

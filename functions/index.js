@@ -17,9 +17,10 @@ const db = getFirestore();
 // Die Firestore-Datenbank steht in Zürich, die Funktionen müssen in derselben Region laufen.
 const REGION = 'europe-west6';
 
-// Eine Instanz bleibt immer wach, sonst dauert die erste Antwort nach einer Pause
-// mehrere Sekunden (Kaltstart). Kostet wenig; für seltene Funktionen nicht nötig.
-const WARM = { minInstances: 1 };
+// Kaltstart: Nach einer Pause braucht die erste Antwort einer Funktion einige Sekunden.
+// Mit { minInstances: 1 } bleibt eine Instanz wach – kostet aber ca. 8.70 $ pro Monat
+// und Funktion (onBattleShot + onMessage zusammen ca. 17.50 $). Darum aus.
+const WARM = {};
 
 /** Name der Person (für "Anna: Hallo"). Hat [viewer] einen Spitznamen gesetzt, diesen. */
 async function nameOf(uid, viewer) {

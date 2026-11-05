@@ -43,7 +43,12 @@ class CrosswordScreen extends StatelessWidget {
   }
 }
 
-Future<void> _newPuzzle(Couple couple, CrosswordLevel level) async {
+Future<void> _newPuzzle(
+  BuildContext context,
+  Couple couple,
+  CrosswordLevel level,
+) async {
+  final messenger = ScaffoldMessenger.of(context);
   try {
     // Bei Fehlern (z. B. offline) einfach ohne Merkliste würfeln.
     final recent = await CrosswordService.instance
@@ -59,6 +64,14 @@ Future<void> _newPuzzle(Couple couple, CrosswordLevel level) async {
     );
   } catch (e, s) {
     AppLogger.error(e, s, where: 'Kreuzwort: neues Rätsel');
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Die Stufe «${level.label}» konnte nicht gestartet werden. '
+          'Bitte Verbindung prüfen und noch einmal versuchen.',
+        ),
+      ),
+    );
   }
 }
 
@@ -89,7 +102,7 @@ class _Start extends StatelessWidget {
             style: const TextStyle(color: Kitsune.mist),
           ),
           const SizedBox(height: 22),
-          _LevelPicker(onPick: (level) => _newPuzzle(couple, level)),
+          _LevelPicker(onPick: (level) => _newPuzzle(context, couple, level)),
         ],
       ),
     ),
@@ -491,7 +504,9 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
             style: AppTheme.label(),
           ),
           const SizedBox(height: 12),
-          _LevelPicker(onPick: (level) => _newPuzzle(widget.couple, level)),
+          _LevelPicker(
+            onPick: (level) => _newPuzzle(context, widget.couple, level),
+          ),
           const SizedBox(height: 18),
         ],
         _ClueList(

@@ -9,6 +9,7 @@ const { getMessaging } = require('firebase-admin/messaging');
 const { getAuth } = require('firebase-admin/auth');
 const { getStorage } = require('firebase-admin/storage');
 const battleship = require('./battleship');
+const letters = require('./letters');
 
 initializeApp();
 const db = getFirestore();
@@ -223,6 +224,12 @@ exports.onDailyAnswer = onDocumentCreated(
 /** "24.12.2026" in Schweizer Zeit. */
 const swissDate = (ts) => ts.toDate().toLocaleDateString('de-CH', { timeZone: 'Europe/Zurich' });
 
+/** " um 22:00" – leer bei Briefen ohne Uhrzeit (Mitternacht). */
+const timeSuffix = (ts) => {
+  const t = letters.clockText(ts.toMillis());
+  return t === '00:00' ? '' : ` um ${t}`;
+};
+
 // Neuer Liebesbrief (der Text bleibt bis zum Datum verschlossen).
 exports.onLetter = onDocumentCreated(
   { document: 'couples/{coupleId}/letters/{id}', region: REGION },
@@ -230,26 +237,27 @@ exports.onLetter = onDocumentCreated(
     const l = event.data.data();
     await notify(l.to, {
       title: `💌 ${await nameOf(l.from, l.to)} hat dir einen Brief geschrieben`,
-      body: `Er lässt sich am ${swissDate(l.openAt)} öffnen.`,
+      body: `Er lässt sich am ${swissDate(l.openAt)}${timeSuffix(l.openAt)} öffnen.`,
       type: 'us',
     });
   },
 );
 
-// Jeden Morgen um 8 Uhr: Briefe, die sich seit gestern öffnen lassen.
+// Alle 15 Minuten: Briefe, die sich jetzt öffnen lassen, einmal melden
+// (Briefe ohne Uhrzeit um 8 Uhr). "reminded" verhindert doppelte Meldungen.
 exports.letterReminder = onSchedule(
-  { schedule: 'every day 08:00', timeZone: 'Europe/Zurich', region: REGION },
+  { schedule: 'every 15 minutes', timeZone: 'Europe/Zurich', region: REGION },
   async () => {
     const now = Date.now();
     const snap = await db.collectionGroup('letters').get();
     for (const doc of snap.docs) {
       const l = doc.data();
-      if (l.openedAt || !l.openAt) continue;
-      const openAt = l.openAt.toMillis();
-      if (openAt > now || openAt <= now - 24 * 60 * 60 * 1000) continue;
+      if (l.openedAt || l.reminded || !l.openAt) continue;
+      if (!letters.reminderDue(l.openAt.toMillis(), now)) continue;
+      await doc.ref.update({ reminded: true });
       await notify(l.to, {
         title: '💌 Ein Brief wartet auf dich',
-        body: `Heute darfst du den Brief von ${await nameOf(l.from, l.to)} öffnen.`,
+        body: `Du darfst jetzt den Brief von ${await nameOf(l.from, l.to)} öffnen.`,
         type: 'us',
       });
     }

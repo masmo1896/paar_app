@@ -69,3 +69,24 @@ Map<Point<int>, int> clueNumbers(List<CrosswordWord> words) {
     ..sort((a, b) => a.y != b.y ? a.y - b.y : a.x - b.x);
   return {for (var i = 0; i < starts.length; i++) starts[i]: i + 1};
 }
+
+/// Ergebnis eines gelösten Rätsels: Punkte und 1–3 Sterne.
+/// Fehlversuche und Hinweise kosten Punkte; wenige davon geben mehr Sterne.
+({int points, int stars, int misses}) crosswordScore({
+  required List<CrosswordWord> words,
+  required int solved,
+  required int attempts,
+  required int hints,
+  required int pointsPerLetter,
+}) {
+  final misses = max(0, attempts - solved);
+  final base =
+      words.fold<int>(0, (sum, w) => sum + w.answer.length) * pointsPerLetter;
+  final points = max(
+    0,
+    base - misses * pointsPerLetter * 2 - hints * pointsPerLetter * 3,
+  );
+  final ratio = words.isEmpty ? 1.0 : (misses + hints) / words.length;
+  final stars = ratio <= 0.15 ? 3 : (ratio <= 0.5 ? 2 : 1);
+  return (points: points, stars: stars, misses: misses);
+}

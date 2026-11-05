@@ -10,6 +10,7 @@ import '../utils/shared_stream.dart';
 //   couples/{c}/crosswords/{g} -> { status: 'playing'|'done', turn, size,
 //                                   words: [{id, clue, answer, x, y, across}],
 //                                   solved: {wordId: uid}, revealed: [Feld-Nr.],
+//                                   lastMove?: {by, type: 'solved'|'miss'|'hint', wordId},
 //                                   attempts, hintsUsed, createdBy, createdAt, updatedAt }
 // Ihr löst gemeinsam: abwechselnd ein Wort raten oder einen Buchstaben aufdecken.
 
@@ -25,6 +26,7 @@ class CrosswordGame {
     required this.attempts,
     required this.hintsUsed,
     this.difficulty = 'medium',
+    this.lastMove,
   });
 
   factory CrosswordGame.fromDoc(DocumentSnapshot<Map<String, dynamic>> d) {
@@ -46,6 +48,14 @@ class CrosswordGame {
       attempts: (m['attempts'] as num?)?.toInt() ?? 0,
       hintsUsed: (m['hintsUsed'] as num?)?.toInt() ?? 0,
       difficulty: m['difficulty'] as String? ?? 'medium',
+      lastMove: switch (m['lastMove']) {
+        final Map lm when lm['by'] is String && lm['wordId'] is String => (
+          by: lm['by'] as String,
+          type: lm['type'] as String? ?? 'miss',
+          wordId: lm['wordId'] as String,
+        ),
+        _ => null,
+      },
     );
   }
 
@@ -63,8 +73,11 @@ class CrosswordGame {
   final int attempts;
   final int hintsUsed;
 
-  /// 'easy', 'medium', 'hard', 'expert' oder 'god' (ältere Rätsel: 'medium').
+  /// 'veryEasy', 'easy', 'medium', 'hard', 'expert' oder 'god' (ältere Rätsel: 'medium').
   final String difficulty;
+
+  /// Der letzte Zug: wer, was ('solved', 'miss', 'hint') und bei welchem Wort.
+  final ({String by, String type, String wordId})? lastMove;
 
   bool get isDone => status == 'done';
   double get progress => words.isEmpty ? 0 : solved.length / words.length;
@@ -167,6 +180,11 @@ class CrosswordService {
     final allSolved = correct && game.solved.length + 1 >= game.words.length;
     await _games(coupleId).doc(game.id).update({
       if (correct) 'solved.${word.id}': _uid,
+      'lastMove': {
+        'by': _uid,
+        'type': correct ? 'solved' : 'miss',
+        'wordId': word.id,
+      },
       'attempts': FieldValue.increment(1),
       'turn': partnerUid,
       if (allSolved) 'status': 'done',
@@ -190,6 +208,7 @@ class CrosswordService {
     return _games(coupleId).doc(game.id).update({
       'revealed': FieldValue.arrayUnion([open[Random().nextInt(open.length)]]),
       'hintsUsed': FieldValue.increment(1),
+      'lastMove': {'by': _uid, 'type': 'hint', 'wordId': word.id},
       'turn': partnerUid,
       'updatedAt': FieldValue.serverTimestamp(),
     });

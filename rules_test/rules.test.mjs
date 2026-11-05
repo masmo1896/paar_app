@@ -133,6 +133,14 @@ test('Liebesbrief: Text vor openAt gesperrt für Empfänger, offen für Schreibe
   await assertFails(updateDoc(doc(db(ME), 'couples', C, 'letters', 'l1'), { openedAt: serverTimestamp() }));
 });
 
+test('Liebesbrief: Öffnungszeit muss in der Zukunft liegen', async () => {
+  const mk = (id, ms) => setDoc(doc(db(ME), 'couples', C, 'letters', id), {
+    from: ME, to: LOVE, openAt: Timestamp.fromMillis(Date.now() + ms), createdAt: serverTimestamp(),
+  });
+  await assertFails(mk('past', -60000));
+  await assertSucceeds(mk('tonight', 3 * 3600 * 1000));
+});
+
 test('Frage des Tages: Antwort des Schatzes erst nach eigener Antwort', async () => {
   const theirs = doc(db(ME), 'couples', C, 'days', 'd1', 'answers', LOVE);
   await assertFails(getDoc(theirs));
@@ -301,8 +309,9 @@ test('Kreuzwort: Schwierigkeit nur einfach/mittel/schwer/experte/gott, höchsten
     updatedAt: serverTimestamp(), size: 9, words, solved: {}, attempts: 0, hintsUsed: 0, revealed: [] };
   await assertFails(setDoc(cwPath(db(ME)), { ...base, difficulty: 'unmöglich' }));
   await assertFails(setDoc(cwPath(db(ME)), { ...base, difficulty: 'easy', revealed: [1, 2, 3] }));
+  await assertFails(setDoc(cwPath(db(ME)), { ...base, difficulty: 'veryEasy', revealed: [1, 2, 3, 4, 5] }));
   await assertSucceeds(setDoc(cwPath(db(ME)), { ...base, difficulty: 'easy', revealed: [1, 2] }));
-  for (const level of ['expert', 'god']) {
+  for (const level of ['veryEasy', 'expert', 'god']) {
     await assertSucceeds(setDoc(doc(db(ME), 'couples', C, 'crosswords', level), { ...base, difficulty: level }));
   }
 });
@@ -313,7 +322,10 @@ test('Kreuzwort: Zug nur wer dran ist, danach ist der Schatz dran', async () => 
   await assertFails(updateDoc(cwPath(db(LOVE)), { ...move, turn: ME }));
   await assertFails(updateDoc(cwPath(db(ME)), { ...move, turn: ME }));
   await assertFails(updateDoc(cwPath(db(ME)), { ...move, turn: STRANGER }));
-  await assertSucceeds(updateDoc(cwPath(db(ME)), move));
+  // Der letzte Zug darf nur den eigenen Namen tragen.
+  await assertFails(updateDoc(cwPath(db(ME)), { ...move, lastMove: { by: LOVE, type: 'solved', wordId: 'w2' } }));
+  await assertFails(updateDoc(cwPath(db(ME)), { ...move, lastMove: { by: ME, type: 'cheat', wordId: 'w2' } }));
+  await assertSucceeds(updateDoc(cwPath(db(ME)), { ...move, lastMove: { by: ME, type: 'solved', wordId: 'w2' } }));
 });
 
 test('Kreuzwort: gelöste Wörter und Lösung bleiben unverändert', async () => {

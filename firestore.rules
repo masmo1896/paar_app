@@ -155,6 +155,8 @@ service cloud.firestore {
           request.resource.data.from == request.auth.uid &&
           request.resource.data.to is string &&
           request.resource.data.openAt is timestamp &&
+          // Ein Brief öffnet sich immer später, nie sofort.
+          request.resource.data.openAt > request.time &&
           request.resource.data.createdAt == request.time;
         // Nur die Empfängerin darf "geöffnet" setzen – und erst ab openAt.
         allow update: if isMember(coupleId) &&
@@ -289,7 +291,7 @@ service cloud.firestore {
           request.resource.data.keys().hasOnly(
             ['status', 'turn', 'createdBy', 'createdAt', 'updatedAt', 'size', 'words',
              'solved', 'attempts', 'hintsUsed', 'revealed', 'difficulty']) &&
-          request.resource.data.get('difficulty', 'medium') in ['easy', 'medium', 'hard', 'expert', 'god'] &&
+          request.resource.data.get('difficulty', 'medium') in ['veryEasy', 'easy', 'medium', 'hard', 'expert', 'god'] &&
           request.resource.data.status == 'playing' &&
           request.resource.data.createdBy == request.auth.uid &&
           request.resource.data.turn == request.auth.uid &&
@@ -300,9 +302,10 @@ service cloud.firestore {
           request.resource.data.solved == {} &&
           request.resource.data.attempts == 0 &&
           request.resource.data.hintsUsed == 0 &&
-          // «Einfach» schenkt zum Start bis zu 2 Buchstaben.
+          // «Sehr leicht» schenkt zum Start bis zu 4 Buchstaben, «Einfach» 2.
           request.resource.data.revealed is list &&
-          request.resource.data.revealed.size() <= 2 &&
+          request.resource.data.revealed.size() <=
+            (request.resource.data.get('difficulty', 'medium') == 'veryEasy' ? 4 : 2) &&
           request.resource.data.createdAt == request.time &&
           request.resource.data.updatedAt == request.time;
         // Zug: nur wer dran ist; danach ist der Schatz dran. Gelöste Wörter bleiben gelöst.
@@ -310,7 +313,11 @@ service cloud.firestore {
           resource.data.status == 'playing' &&
           resource.data.turn == request.auth.uid &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['solved', 'attempts', 'hintsUsed', 'revealed', 'turn', 'status', 'updatedAt']) &&
+            .hasOnly(['solved', 'attempts', 'hintsUsed', 'revealed', 'turn', 'status', 'lastMove', 'updatedAt']) &&
+          // Der letzte Zug trägt immer den eigenen Namen.
+          (!('lastMove' in request.resource.data) ||
+            (request.resource.data.lastMove.by == request.auth.uid &&
+             request.resource.data.lastMove.type in ['solved', 'miss', 'hint'])) &&
           request.resource.data.status in ['playing', 'done'] &&
           request.resource.data.turn != request.auth.uid &&
           members().hasAny([request.resource.data.turn]) &&

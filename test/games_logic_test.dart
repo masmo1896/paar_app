@@ -84,6 +84,66 @@ void main() {
       }
     });
 
+    test('Punkte und Sterne', () {
+      final words = [
+        for (var i = 0; i < 10; i++)
+          CrosswordWord(
+            id: 'w$i',
+            clue: 'c',
+            answer: 'ABCDE',
+            x: 0,
+            y: i,
+            across: true,
+          ),
+      ];
+      final perfect = crosswordScore(
+        words: words,
+        solved: 10,
+        attempts: 10,
+        hints: 0,
+        pointsPerLetter: 10,
+      );
+      expect(perfect.points, 500);
+      expect(perfect.stars, 3);
+      final messy = crosswordScore(
+        words: words,
+        solved: 10,
+        attempts: 13,
+        hints: 1,
+        pointsPerLetter: 10,
+      );
+      expect(messy.misses, 3);
+      expect(messy.points, 500 - 3 * 20 - 1 * 30);
+      expect(messy.stars, 2);
+      final bad = crosswordScore(
+        words: words,
+        solved: 10,
+        attempts: 40,
+        hints: 0,
+        pointsPerLetter: 10,
+      );
+      expect(bad.points, 0);
+      expect(bad.stars, 1);
+    });
+
+    test('Stufenleiter wird schwerer', () {
+      final levels = CrosswordLevel.values;
+      for (var i = 1; i < levels.length; i++) {
+        expect(levels[i].maxSize, greaterThanOrEqualTo(levels[i - 1].maxSize));
+        expect(
+          levels[i].minLength,
+          greaterThanOrEqualTo(levels[i - 1].minLength),
+        );
+        expect(levels[i].maxHints, lessThanOrEqualTo(levels[i - 1].maxHints));
+        expect(
+          levels[i].pointsPerLetter,
+          greaterThan(levels[i - 1].pointsPerLetter),
+        );
+      }
+      expect(CrosswordLevel.veryEasy.stars, 1);
+      expect(CrosswordLevel.god.stars, 6);
+    });
+
     test('Zuletzt gespielte Wörter werden gemieden', () {
       for (final level in CrosswordLevel.values) {
         for (var seed = 0; seed < 10; seed++) {
@@ -106,6 +166,7 @@ void main() {
     });
 
     for (final (level, minWords) in [
+      (CrosswordLevel.veryEasy, 4),
       (CrosswordLevel.easy, 5),
       (CrosswordLevel.medium, 7),
       (CrosswordLevel.hard, 10),

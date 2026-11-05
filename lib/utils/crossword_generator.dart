@@ -9,17 +9,40 @@ typedef CrosswordPuzzle = ({int size, List<CrosswordWord> words});
 
 /// Schwierigkeit: Grösse, Wortanzahl, Wortlänge und aufgedeckte Startbuchstaben.
 enum CrosswordLevel {
+  veryEasy('Sehr leicht', '7×7 · 5 kurze Wörter · 4 Buchstaben geschenkt'),
   easy('Einfach', '9×9 · kurze Wörter · 2 Buchstaben geschenkt'),
   medium('Mittel', '11×11 · 10 Wörter'),
-  hard('Schwer', '13×13 · lange, knifflige Wörter'),
-  expert('Experte', '15×15 · seltene Wörter, knappe Hinweise'),
-  god('Gott', '15×15 · extrem schwer · Fach- und Fremdwörter');
+  hard('Schwer', '13×13 · lange, knifflige Wörter · 8 Buchstaben-Hinweise'),
+  expert('Experte', '15×15 · seltene Wörter · nur 5 Hinweise'),
+  god('Gott', '15×15 · extrem schwer · Fachwörter · nur 3 Hinweise');
 
   const CrosswordLevel(this.label, this.description);
   final String label;
   final String description;
 
+  /// Sterne in der Auswahl: 1 (sehr leicht) bis 6 (Gott).
+  int get stars => index + 1;
+
+  /// So oft darf man einen Buchstaben aufdecken («Gott» fast nie).
+  int get maxHints => switch (this) {
+    veryEasy || easy || medium => 99,
+    hard => 8,
+    expert => 5,
+    god => 3,
+  };
+
+  /// Wie viel ein Wort wert ist (Punkte pro Buchstabe).
+  int get pointsPerLetter => switch (this) {
+    veryEasy => 5,
+    easy => 8,
+    medium => 12,
+    hard => 20,
+    expert => 30,
+    god => 50,
+  };
+
   int get maxSize => switch (this) {
+    veryEasy => 7,
     easy => 9,
     medium => 11,
     hard => 13,
@@ -27,6 +50,7 @@ enum CrosswordLevel {
     god => 15,
   };
   int get target => switch (this) {
+    veryEasy => 5,
     easy => 7,
     medium => 10,
     hard => 14,
@@ -34,6 +58,7 @@ enum CrosswordLevel {
     god => 20,
   };
   int get minLength => switch (this) {
+    veryEasy => 3,
     easy => 3,
     medium => 3,
     hard => 5,
@@ -41,6 +66,7 @@ enum CrosswordLevel {
     god => 7,
   };
   int get maxLength => switch (this) {
+    veryEasy => 5,
     easy => 6,
     medium => 10,
     hard => 12,
@@ -49,10 +75,14 @@ enum CrosswordLevel {
   };
 
   /// So viele Buchstaben sind zu Beginn schon aufgedeckt.
-  int get giftedLetters => this == easy ? 2 : 0;
+  int get giftedLetters => switch (this) {
+    veryEasy => 4,
+    easy => 2,
+    _ => 0,
+  };
 
   List<(String, String)> get bank => switch (this) {
-    easy || medium => crosswordWords,
+    veryEasy || easy || medium => crosswordWords,
     hard => [...crosswordWordsHard, ...crosswordWords],
     expert => [
       ...crosswordWordsExpert,

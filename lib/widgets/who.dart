@@ -133,7 +133,13 @@ Future<T?> showFormSheet<T>(BuildContext context, WidgetBuilder builder) =>
         padding: EdgeInsets.only(
           left: 20,
           right: 20,
-          bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+          // Tastatur, sonst die Android-Navigationsleiste (sonst liegt der
+          // unterste Knopf, z. B. «Termin löschen», darunter und ist nicht erreichbar).
+          bottom:
+              (MediaQuery.viewInsetsOf(context).bottom > 0
+                  ? MediaQuery.viewInsetsOf(context).bottom
+                  : MediaQuery.viewPaddingOf(context).bottom) +
+              16,
         ),
         child: SingleChildScrollView(child: builder(context)),
       ),

@@ -19,6 +19,15 @@ const _hint = TextStyle(fontSize: 13, color: Kitsune.mist, height: 1.35);
 String _shortDate(DateTime d) =>
     '${d.day}. ${monthsLong[d.month - 1]} ${d.year}';
 
+String _clock(DateTime d) =>
+    '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+/// Öffnungszeitpunkt eines Briefs: «5. November 2026 um 22:00»
+/// (ältere Briefe ohne Uhrzeit: nur das Datum).
+String _openLabel(DateTime d) => d.hour == 0 && d.minute == 0
+    ? _shortDate(d)
+    : '${_shortDate(d)} um ${_clock(d)}';
+
 // ===========================================================================
 // Frage des Tages
 
@@ -449,7 +458,8 @@ class _LetterRow extends StatelessWidget {
       (true, true, false) => ('Brief von $partner', 'Jetzt öffnen! 💌', true),
       (true, false, _) => (
         'Brief von $partner',
-        'öffnet sich am ${_shortDate(l.openAt)} · ${daysLeft <= 1 ? 'morgen' : 'in $daysLeft Tagen'}',
+        'öffnet sich ${sameDay(l.openAt, DateTime.now()) ? 'heute um ${_clock(l.openAt)}' : 'am ${_openLabel(l.openAt)}'}'
+            '${sameDay(l.openAt, DateTime.now()) ? '' : ' · ${daysLeft <= 1 ? 'morgen' : 'in $daysLeft Tagen'}'}',
         false,
       ),
       (true, true, true) => (
@@ -459,7 +469,7 @@ class _LetterRow extends StatelessWidget {
       ),
       (false, false, _) => (
         'Dein Brief an $partner',
-        'öffnet sich am ${_shortDate(l.openAt)}',
+        'öffnet sich am ${_openLabel(l.openAt)}',
         false,
       ),
       (false, true, true) => (
@@ -486,7 +496,7 @@ class _LetterRow extends StatelessWidget {
           : () => ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  'Noch versiegelt – öffnet sich am ${_shortDate(l.openAt)}.',
+                  'Noch versiegelt – öffnet sich am ${_openLabel(l.openAt)}.',
                 ),
               ),
             ),
@@ -543,7 +553,8 @@ class LetterComposer extends StatefulWidget {
 
 class _LetterComposerState extends State<LetterComposer> {
   final _text = TextEditingController();
-  DateTime _openAt = today().add(const Duration(days: 7));
+  // Standard: in einer Woche um 08:00.
+  DateTime _openAt = DateTime(today().year, today().month, today().day + 7, 8);
   bool _sending = false;
 
   @override
@@ -555,16 +566,51 @@ class _LetterComposerState extends State<LetterComposer> {
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _openAt,
-      firstDate: today().add(const Duration(days: 1)),
+      initialDate: _openAt.isBefore(today()) ? today() : _openAt,
+      firstDate: today(),
       lastDate: today().add(const Duration(days: 3650)),
       helpText: 'Wann darf der Brief geöffnet werden?',
     );
-    if (picked != null) setState(() => _openAt = picked);
+    if (picked != null) _setDate(picked);
+  }
+
+  /// Datum ändern, Uhrzeit behalten.
+  void _setDate(DateTime d) => setState(
+    () => _openAt = DateTime(
+      d.year,
+      d.month,
+      d.day,
+      _openAt.hour,
+      _openAt.minute,
+    ),
+  );
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_openAt),
+      helpText: 'Um wie viel Uhr?',
+    );
+    if (picked == null) return;
+    setState(
+      () => _openAt = DateTime(
+        _openAt.year,
+        _openAt.month,
+        _openAt.day,
+        picked.hour,
+        picked.minute,
+      ),
+    );
   }
 
   Future<void> _send() async {
     if (_text.text.trim().isEmpty || _sending) return;
+    if (!_openAt.isAfter(DateTime.now().add(const Duration(minutes: 1)))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wähle einen Zeitpunkt in der Zukunft.')),
+      );
+      return;
+    }
     HapticFeedback.lightImpact();
     setState(() => _sending = true);
     final messenger = ScaffoldMessenger.of(context);
@@ -581,7 +627,7 @@ class _LetterComposerState extends State<LetterComposer> {
         SnackBar(
           content: Text(
             'Brief versiegelt 💌 – ${widget.couple.partnerLabel} kann ihn am '
-            '${_shortDate(_openAt)} öffnen.',
+            '${_openLabel(_openAt)} öffnen.',
           ),
         ),
       );
@@ -596,6 +642,7 @@ class _LetterComposerState extends State<LetterComposer> {
   Widget build(BuildContext context) {
     final t = today();
     final chips = [
+      ('Heute', t),
       ('Morgen', t.add(const Duration(days: 1))),
       ('In 1 Woche', t.add(const Duration(days: 7))),
       ('In 1 Monat', DateTime(t.year, t.month + 1, t.day)),
@@ -647,7 +694,7 @@ class _LetterComposerState extends State<LetterComposer> {
           Text('Öffnet sich am', style: AppTheme.serif(size: 16)),
           const SizedBox(height: 4),
           Text(
-            _shortDate(_openAt),
+            _openLabel(_openAt),
             style: AppTheme.serif(size: 22, color: Kitsune.aqua),
           ),
           const SizedBox(height: 10),
@@ -666,12 +713,17 @@ class _LetterComposerState extends State<LetterComposer> {
                         ? Kitsune.night
                         : Kitsune.paper,
                   ),
-                  onSelected: (_) => setState(() => _openAt = date),
+                  onSelected: (_) => _setDate(date),
                 ),
               ActionChip(
                 avatar: const Icon(Icons.calendar_month_outlined, size: 18),
                 label: const Text('Datum wählen'),
                 onPressed: _pickDate,
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.schedule_rounded, size: 18),
+                label: Text('Uhrzeit: ${_clock(_openAt)}'),
+                onPressed: _pickTime,
               ),
             ],
           ),

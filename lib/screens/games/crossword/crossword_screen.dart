@@ -142,6 +142,7 @@ class _LevelPickerState extends State<_LevelPicker> {
                   children: [
                     Hanko(
                       switch (level) {
+                        CrosswordLevel.veryEasy => '初',
                         CrosswordLevel.easy => '易',
                         CrosswordLevel.medium => '中',
                         CrosswordLevel.hard => '難',
@@ -149,21 +150,36 @@ class _LevelPickerState extends State<_LevelPicker> {
                         CrosswordLevel.god => '神',
                       },
                       size: 26,
-                      filled: level != CrosswordLevel.easy,
+                      filled: level.index > 1,
                     ),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            level.label,
-                            style: AppTheme.serif(
-                              size: 17,
-                              color: level == CrosswordLevel.medium
-                                  ? Kitsune.night
-                                  : Kitsune.paper,
-                            ),
+                          Row(
+                            children: [
+                              Text(
+                                level.label,
+                                style: AppTheme.serif(
+                                  size: 17,
+                                  color: level == CrosswordLevel.medium
+                                      ? Kitsune.night
+                                      : Kitsune.paper,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '★' * level.stars + '☆' * (6 - level.stars),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  letterSpacing: 1,
+                                  color: level == CrosswordLevel.medium
+                                      ? Kitsune.lantern
+                                      : Kitsune.aqua,
+                                ),
+                              ),
+                            ],
                           ),
                           Text(
                             level.description,
@@ -242,6 +258,19 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
       _stamp.forward(from: 0);
     }
     _solvedBefore = Map.of(g.solved);
+    // Der Schatz hat gezogen und ich bin dran: kurz spürbar machen.
+    final me = widget.couple.myUid;
+    if (!g.isDone &&
+        g.turn == me &&
+        old.game.turn != me &&
+        g.lastMove?.type == 'solved') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        HapticFeedback.mediumImpact();
+        if (!reduceMotion(context) && _gridSize != Size.zero) {
+          _fx.fireworks(_gridSize, bursts: 2);
+        }
+      });
+    }
     if (g.isDone && !_wasDone) {
       _wasDone = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -299,9 +328,12 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
         known: _knownLetters(word),
         onGuess: (text) => _guess(word, text),
         onHint: () => _hint(word),
+        hintsLeft: _level.maxHints - widget.game.hintsUsed,
       ),
     );
   }
+
+  CrosswordLevel get _level => CrosswordLevel.fromName(widget.game.difficulty);
 
   /// Bereits sichtbare Buchstaben (aus Kreuzungen oder Hinweisen), sonst null.
   List<String?> _knownLetters(CrosswordWord word) {
@@ -370,6 +402,7 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
       children: [
         _TurnBar(game: g, couple: widget.couple),
+        if (_myTurn) _MoveBanner(game: g, couple: widget.couple),
         const SizedBox(height: 10),
         ClipRRect(
           borderRadius: BorderRadius.circular(3),
@@ -428,6 +461,9 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
             textAlign: TextAlign.center,
             style: AppTheme.serif(size: 20),
           ),
+          const SizedBox(height: 10),
+          _ResultCard(game: g, couple: widget.couple, level: _level),
+          const SizedBox(height: 14),
           const SizedBox(height: 6),
           Text(
             'Neues Rätsel – wie knifflig?',
@@ -735,8 +771,10 @@ class _GuessSheet extends StatefulWidget {
     required this.known,
     required this.onGuess,
     required this.onHint,
+    required this.hintsLeft,
   });
 
+  final int hintsLeft;
   final CrosswordWord word;
   final int number;
   final List<String?> known;
@@ -827,7 +865,7 @@ class _GuessSheetState extends State<_GuessSheet>
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _busy
+                onPressed: _busy || widget.hintsLeft <= 0
                     ? null
                     : () async {
                         setState(() => _busy = true);
@@ -835,7 +873,13 @@ class _GuessSheetState extends State<_GuessSheet>
                         if (context.mounted) Navigator.pop(context);
                       },
                 icon: const Icon(Icons.lightbulb_outline_rounded),
-                label: const Text('Buchstabe'),
+                label: Text(
+                  widget.hintsLeft >= 99
+                      ? 'Buchstabe'
+                      : widget.hintsLeft <= 0
+                      ? 'Keine Hinweise mehr'
+                      : 'Buchstabe (${widget.hintsLeft})',
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -854,6 +898,133 @@ class _GuessSheetState extends State<_GuessSheet>
           style: TextStyle(fontSize: 12, color: Kitsune.mist),
         ),
       ],
+    );
+  }
+}
+
+/// «Billie hat «KUSS» gelöst»: was der Schatz in seinem Zug gemacht hat –
+/// steht da, sobald man selbst dran ist.
+class _MoveBanner extends StatelessWidget {
+  const _MoveBanner({required this.game, required this.couple});
+
+  final CrosswordGame game;
+  final Couple couple;
+
+  @override
+  Widget build(BuildContext context) {
+    final move = game.lastMove;
+    if (move == null || move.by == couple.myUid) return const SizedBox.shrink();
+    final word = game.words.where((w) => w.id == move.wordId).firstOrNull;
+    if (word == null) return const SizedBox.shrink();
+    final nr = clueNumbers(game.words)[Point(word.x, word.y)] ?? 0;
+    final where = '$nr ${word.across ? 'waagrecht' : 'senkrecht'}';
+    final partner = couple.partnerLabel;
+    final (icon, title, detail) = switch (move.type) {
+      'solved' => (
+        '✨',
+        '$partner hat «${word.answer}» gelöst',
+        '$where · ${word.clue}',
+      ),
+      'hint' => (
+        '💡',
+        '$partner hat bei $where einen Buchstaben aufgedeckt',
+        word.clue,
+      ),
+      _ => (
+        '🤔',
+        '$partner lag bei $where daneben',
+        'Das Wort ist noch offen – vielleicht klappt es bei dir.',
+      ),
+    };
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: Kitsune.plum.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Kitsune.plum),
+        ),
+        child: Row(
+          children: [
+            Text(icon, style: const TextStyle(fontSize: 22)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    detail,
+                    style: const TextStyle(fontSize: 12, color: Kitsune.mist),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Auswertung nach dem Lösen: Sterne, Punkte, wer wie viel gefunden hat.
+class _ResultCard extends StatelessWidget {
+  const _ResultCard({
+    required this.game,
+    required this.couple,
+    required this.level,
+  });
+
+  final CrosswordGame game;
+  final Couple couple;
+  final CrosswordLevel level;
+
+  @override
+  Widget build(BuildContext context) {
+    final score = crosswordScore(
+      words: game.words,
+      solved: game.solved.length,
+      attempts: game.attempts,
+      hints: game.hintsUsed,
+      pointsPerLetter: level.pointsPerLetter,
+    );
+    final mine = game.solved.values.where((u) => u == couple.myUid).length;
+    final theirs = game.solved.length - mine;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Kitsune.deep.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0x4DF3EBD3)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            '★' * score.stars + '☆' * (3 - score.stars),
+            style: const TextStyle(
+              fontSize: 34,
+              letterSpacing: 4,
+              color: Kitsune.lantern,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text('${score.points} Punkte', style: AppTheme.serif(size: 22)),
+          Text(level.label, style: AppTheme.label()),
+          const SizedBox(height: 10),
+          Text(
+            'Du $mine · ${couple.partnerLabel} $theirs Wörter\n'
+            '${score.misses} ${score.misses == 1 ? 'Fehlversuch' : 'Fehlversuche'} · '
+            '${game.hintsUsed} ${game.hintsUsed == 1 ? 'Hinweis' : 'Hinweise'}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, color: Kitsune.mist),
+          ),
+        ],
+      ),
     );
   }
 }

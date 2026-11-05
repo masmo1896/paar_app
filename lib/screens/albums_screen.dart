@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -120,10 +121,12 @@ class _AlbumTile extends StatelessWidget {
                     width: double.infinity,
                     color: Kitsune.deep,
                     child: cover != null
-                        ? Image.network(
-                            cover,
+                        ? Image(
+                            image: ResizeImage(
+                              CachedNetworkImageProvider(cover),
+                              width: 500, // klein dekodieren, spart Speicher
+                            ),
                             fit: BoxFit.cover,
-                            cacheWidth: 500, // klein dekodieren, spart Speicher
                             errorBuilder: (_, _, _) => const SizedBox.shrink(),
                           )
                         : const Icon(
@@ -426,10 +429,12 @@ class _AlbumScreenState extends State<AlbumScreen> {
                             ),
                           ),
                         ),
-                        child: Image.network(
-                          photos[i].url,
+                        child: Image(
+                          image: ResizeImage(
+                            CachedNetworkImageProvider(photos[i].url),
+                            width: 360,
+                          ),
                           fit: BoxFit.cover,
-                          cacheWidth: 360,
                           semanticLabel: 'Foto ${i + 1} von ${photos.length}',
                           errorBuilder: (_, _, _) => const ColoredBox(
                             color: Colors.black12,

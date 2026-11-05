@@ -769,6 +769,81 @@ class _LetterPageState extends State<LetterPage> {
     }
   }
 
+  /// Datum und Uhrzeit eines noch versiegelten Briefs ändern.
+  Future<void> _reschedule() async {
+    final l = widget.letter;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: l.openAt.isBefore(today()) ? today() : l.openAt,
+      firstDate: today(),
+      lastDate: today().add(const Duration(days: 3650)),
+      helpText: 'Neues Datum',
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(l.openAt),
+      helpText: 'Um wie viel Uhr?',
+    );
+    if (time == null || !mounted) return;
+    final openAt = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+    final messenger = ScaffoldMessenger.of(context);
+    if (!openAt.isAfter(DateTime.now().add(const Duration(minutes: 1)))) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Wähle einen Zeitpunkt in der Zukunft.')),
+      );
+      return;
+    }
+    final navigator = Navigator.of(context);
+    try {
+      await UsService.instance.rescheduleLetter(
+        widget.couple.coupleId,
+        l.id,
+        openAt,
+      );
+      navigator.pop();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${widget.couple.partnerLabel} kann den Brief jetzt am '
+            '${_openLabel(openAt)} öffnen.',
+          ),
+        ),
+      );
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'Brief verschieben');
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Das hat nicht geklappt.')),
+      );
+    }
+  }
+
+  Future<void> _delete() async {
+    if (!await confirmDelete(context, 'Brief')) return;
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    try {
+      await UsService.instance.deleteLetter(
+        widget.couple.coupleId,
+        widget.letter.id,
+      );
+      navigator.pop();
+      messenger.showSnackBar(const SnackBar(content: Text('Brief gelöscht.')));
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'Brief löschen');
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Löschen hat nicht geklappt.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = widget.letter;
@@ -778,6 +853,29 @@ class _LetterPageState extends State<LetterPage> {
         title: Text(
           fromMe ? 'Dein Brief' : 'Brief von ${widget.couple.partnerLabel}',
         ),
+        actions: [
+          if (fromMe)
+            PopupMenuButton<String>(
+              onSelected: (v) => v == 'time' ? _reschedule() : _delete(),
+              itemBuilder: (_) => [
+                if (!l.canOpen)
+                  const PopupMenuItem(
+                    value: 'time',
+                    child: ListTile(
+                      leading: Icon(Icons.schedule_rounded),
+                      title: Text('Datum und Uhrzeit ändern'),
+                    ),
+                  ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: ListTile(
+                    leading: Icon(Icons.delete_outline),
+                    title: Text('Brief löschen'),
+                  ),
+                ),
+              ],
+            ),
+        ],
       ),
       body: FutureBuilder<String>(
         future: _text,

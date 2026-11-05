@@ -17,6 +17,10 @@ const db = getFirestore();
 // Die Firestore-Datenbank steht in Zürich, die Funktionen müssen in derselben Region laufen.
 const REGION = 'europe-west6';
 
+// Eine Instanz bleibt immer wach, sonst dauert die erste Antwort nach einer Pause
+// mehrere Sekunden (Kaltstart). Kostet wenig; für seltene Funktionen nicht nötig.
+const WARM = { minInstances: 1 };
+
 /** Name der Person (für "Anna: Hallo"). Hat [viewer] einen Spitznamen gesetzt, diesen. */
 async function nameOf(uid, viewer) {
   if (viewer) {
@@ -77,7 +81,7 @@ const preview = (m) => ({
 
 // Neue Chat-Nachricht
 exports.onMessage = onDocumentCreated(
-  { document: 'couples/{coupleId}/messages/{id}', region: REGION },
+  { document: 'couples/{coupleId}/messages/{id}', region: REGION, ...WARM },
   async (event) => {
     const m = event.data.data();
     const to = await partnerOf(event.params.coupleId, m.senderId);
@@ -346,7 +350,7 @@ exports.onBattleFleet = onDocumentWritten(
 
 // Ein Schuss wurde abgegeben: auswerten und den Spielstand weiterschreiben.
 exports.onBattleShot = onDocumentCreated(
-  { document: 'couples/{coupleId}/battleships/{gameId}/shots/{shotId}', region: REGION },
+  { document: 'couples/{coupleId}/battleships/{gameId}/shots/{shotId}', region: REGION, ...WARM },
   async (event) => {
     const shotRef = event.data.ref;
     const gameRef = shotRef.parent.parent;

@@ -1,3 +1,5 @@
+import 'package:cached_network_image/cached_network_image.dart';
+
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -36,7 +38,7 @@ class Avatar extends StatelessWidget {
       foregroundImage: url == null
           ? null
           : ResizeImage(
-              NetworkImage(url),
+              CachedNetworkImageProvider(url),
               width: (radius * 2 * MediaQuery.devicePixelRatioOf(context))
                   .round(),
             ),

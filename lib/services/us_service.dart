@@ -222,6 +222,25 @@ class UsService {
     return d.data()?['text'] as String? ?? '';
   }
 
+  /// Öffnungszeitpunkt eines noch versiegelten Briefs ändern (nur der Schreiber).
+  Future<void> rescheduleLetter(
+    String coupleId,
+    String letterId,
+    DateTime openAt,
+  ) =>
+      _letters(coupleId)
+          .doc(letterId)
+          .update({'openAt': Timestamp.fromDate(openAt)});
+
+  /// Brief samt Text löschen (nur der Schreiber).
+  Future<void> deleteLetter(String coupleId, String letterId) {
+    final ref = _letters(coupleId).doc(letterId);
+    return (_db.batch()
+          ..delete(ref.collection('content').doc('text'))
+          ..delete(ref))
+        .commit();
+  }
+
   Future<void> markLetterOpened(String coupleId, String letterId) =>
       _letters(coupleId)
           .doc(letterId)

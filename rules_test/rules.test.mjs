@@ -141,6 +141,19 @@ test('Liebesbrief: Öffnungszeit muss in der Zukunft liegen', async () => {
   await assertSucceeds(mk('tonight', 3 * 3600 * 1000));
 });
 
+test('Liebesbrief: Schreiber darf Zeit verschieben und löschen, solange versiegelt', async () => {
+  const l1 = (u) => doc(db(u), 'couples', C, 'letters', 'l1');
+  const later = Timestamp.fromMillis(Date.now() + 2 * 86400000);
+  await assertFails(updateDoc(l1(ME), { openAt: later }));              // Empfänger darf nicht
+  await assertFails(updateDoc(l1(STRANGER), { openAt: later }));
+  await assertFails(updateDoc(l1(LOVE), { openAt: Timestamp.fromMillis(Date.now() - 1000) }));
+  await assertFails(updateDoc(l1(LOVE), { openAt: later, to: LOVE }));
+  await assertSucceeds(updateDoc(l1(LOVE), { openAt: later }));
+  await assertFails(deleteDoc(l1(ME)));
+  await assertSucceeds(deleteDoc(doc(db(LOVE), 'couples', C, 'letters', 'l1', 'content', 'text')));
+  await assertSucceeds(deleteDoc(l1(LOVE)));
+});
+
 test('Frage des Tages: Antwort des Schatzes erst nach eigener Antwort', async () => {
   const theirs = doc(db(ME), 'couples', C, 'days', 'd1', 'answers', LOVE);
   await assertFails(getDoc(theirs));

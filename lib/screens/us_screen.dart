@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -367,10 +368,12 @@ class _Polaroid extends StatelessWidget {
                 width: double.infinity,
                 color: Kitsune.deep,
                 child: cover != null
-                    ? Image.network(
-                        cover,
+                    ? Image(
+                        image: ResizeImage(
+                          CachedNetworkImageProvider(cover),
+                          width: 300,
+                        ),
                         fit: BoxFit.cover,
-                        cacheWidth: 300,
                         errorBuilder: (_, _, _) => const SizedBox.shrink(),
                       )
                     : Icon(

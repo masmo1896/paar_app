@@ -158,11 +158,18 @@ service cloud.firestore {
           // Ein Brief öffnet sich immer später, nie sofort.
           request.resource.data.openAt > request.time &&
           request.resource.data.createdAt == request.time;
-        // Nur die Empfängerin darf "geöffnet" setzen – und erst ab openAt.
-        allow update: if isMember(coupleId) &&
-          resource.data.to == request.auth.uid &&
-          resource.data.openAt <= request.time &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['openedAt']);
+        // Die Empfängerin darf "geöffnet" setzen – erst ab openAt. Wer den Brief
+        // geschrieben hat, darf den Öffnungszeitpunkt verschieben, solange er
+        // noch versiegelt ist (neuer Zeitpunkt immer in der Zukunft).
+        allow update: if isMember(coupleId) && (
+          (resource.data.to == request.auth.uid &&
+            resource.data.openAt <= request.time &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['openedAt'])) ||
+          (resource.data.from == request.auth.uid &&
+            resource.data.openAt > request.time &&
+            request.resource.data.openAt is timestamp &&
+            request.resource.data.openAt > request.time &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['openAt'])));
         allow delete: if isMember(coupleId) && resource.data.from == request.auth.uid;
 
         match /content/{doc} {

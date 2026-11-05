@@ -1,3 +1,5 @@
+import 'package:cached_network_image/cached_network_image.dart';
+
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -1420,7 +1422,11 @@ class _ChatImage extends StatelessWidget {
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
             ),
-            body: Center(child: InteractiveViewer(child: Image.network(url))),
+            body: Center(
+              child: InteractiveViewer(
+                child: Image(image: CachedNetworkImageProvider(url)),
+              ),
+            ),
           ),
         ),
       ),
@@ -1428,13 +1434,15 @@ class _ChatImage extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: _maxHeight),
-          child: Image.network(
-            url,
+          // Auf der Platte zwischengespeichert: beim nächsten Start sofort da.
+          child: Image(
+            image: ResizeImage(
+              CachedNetworkImageProvider(url),
+              // Nur so gross dekodieren, wie die Blase ist (spart viel Speicher).
+              width: (_width * MediaQuery.devicePixelRatioOf(context)).round(),
+            ),
             width: _width,
             fit: BoxFit.cover,
-            // Nur so gross dekodieren, wie die Blase ist (spart viel Speicher).
-            cacheWidth: (_width * MediaQuery.devicePixelRatioOf(context))
-                .round(),
             semanticLabel: label,
             // Platzhalter, bis das Bild geladen ist (sonst wäre die Blase kurz flach).
             frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>

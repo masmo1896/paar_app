@@ -344,9 +344,10 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
     ];
   }
 
-  Future<void> _guess(CrosswordWord word, String text) async {
+  /// true = der Zug wurde gespeichert (egal ob richtig oder falsch).
+  Future<bool> _guess(CrosswordWord word, String text) async {
     final partner = widget.couple.partnerUid;
-    if (partner == null) return;
+    if (partner == null) return false;
     try {
       final ok = await CrosswordService.instance.submitWord(
         widget.couple.coupleId,
@@ -355,7 +356,7 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
         text,
         partner,
       );
-      if (!mounted) return;
+      if (!mounted) return true;
       if (ok) {
         HapticFeedback.mediumImpact();
       } else {
@@ -372,14 +373,30 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
             ),
           ),
         );
+      return true;
     } catch (e, s) {
       AppLogger.error(e, s, where: 'Kreuzwort: Wort raten');
+      _saveFailed();
+      return false;
     }
   }
 
-  Future<void> _hint(CrosswordWord word) async {
+  void _saveFailed() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Dein Zug wurde nicht gespeichert. Bitte Verbindung prüfen und noch einmal versuchen.',
+          ),
+        ),
+      );
+  }
+
+  Future<bool> _hint(CrosswordWord word) async {
     final partner = widget.couple.partnerUid;
-    if (partner == null) return;
+    if (partner == null) return false;
     try {
       await CrosswordService.instance.hint(
         widget.couple.coupleId,
@@ -387,8 +404,11 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
         word,
         partner,
       );
+      return true;
     } catch (e, s) {
       AppLogger.error(e, s, where: 'Kreuzwort: Hinweis');
+      _saveFailed();
+      return false;
     }
   }
 
@@ -778,8 +798,8 @@ class _GuessSheet extends StatefulWidget {
   final CrosswordWord word;
   final int number;
   final List<String?> known;
-  final Future<void> Function(String) onGuess;
-  final Future<void> Function() onHint;
+  final Future<bool> Function(String) onGuess;
+  final Future<bool> Function() onHint;
 
   @override
   State<_GuessSheet> createState() => _GuessSheetState();
@@ -809,8 +829,14 @@ class _GuessSheetState extends State<_GuessSheet>
       return;
     }
     setState(() => _busy = true);
-    await widget.onGuess(text);
-    if (mounted) Navigator.pop(context);
+    final saved = await widget.onGuess(text);
+    if (!mounted) return;
+    // Nur schliessen, wenn der Zug gespeichert wurde – sonst bleibt die Eingabe offen.
+    if (saved) {
+      Navigator.pop(context);
+    } else {
+      setState(() => _busy = false);
+    }
   }
 
   @override
@@ -869,8 +895,13 @@ class _GuessSheetState extends State<_GuessSheet>
                     ? null
                     : () async {
                         setState(() => _busy = true);
-                        await widget.onHint();
-                        if (context.mounted) Navigator.pop(context);
+                        final saved = await widget.onHint();
+                        if (!context.mounted) return;
+                        if (saved) {
+                          Navigator.pop(context);
+                        } else {
+                          setState(() => _busy = false);
+                        }
                       },
                 icon: const Icon(Icons.lightbulb_outline_rounded),
                 label: Text(

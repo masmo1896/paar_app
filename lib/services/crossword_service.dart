@@ -132,6 +132,24 @@ class CrosswordService {
             .map((s) => s.size),
   );
 
+  /// Zug speichern. Kennen die Server-Regeln «lastMove» noch nicht (ältere Regeln
+  /// online), wird der Zug ohne diese Meldung gespeichert statt still zu scheitern.
+  Future<void> _updateWithMove(
+    String coupleId,
+    String gameId,
+    Map<String, Object?> data,
+  ) async {
+    final ref = _games(coupleId).doc(gameId);
+    try {
+      await ref.update(data);
+    } on FirebaseException catch (e) {
+      if (e.code != 'permission-denied' || !data.containsKey('lastMove')) {
+        rethrow;
+      }
+      await ref.update({...data}..remove('lastMove'));
+    }
+  }
+
   /// Lösungswörter der letzten [games] Rätsel – damit sich Wörter nicht ständig wiederholen.
   Future<Set<String>> recentAnswers(String coupleId, {int games = 5}) async {
     final snap = await _games(coupleId)
@@ -178,7 +196,7 @@ class CrosswordService {
   ) async {
     final correct = normalizeAnswer(guess) == word.answer;
     final allSolved = correct && game.solved.length + 1 >= game.words.length;
-    await _games(coupleId).doc(game.id).update({
+    await _updateWithMove(coupleId, game.id, {
       if (correct) 'solved.${word.id}': _uid,
       'lastMove': {
         'by': _uid,
@@ -205,7 +223,7 @@ class CrosswordService {
         .where((i) => !game.revealed.contains(i))
         .toList();
     if (open.isEmpty) return Future.value();
-    return _games(coupleId).doc(game.id).update({
+    return _updateWithMove(coupleId, game.id, {
       'revealed': FieldValue.arrayUnion([open[Random().nextInt(open.length)]]),
       'hintsUsed': FieldValue.increment(1),
       'lastMove': {'by': _uid, 'type': 'hint', 'wordId': word.id},

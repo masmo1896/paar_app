@@ -295,13 +295,16 @@ test('Kreuzwort: neues Rätsel nur mit sauberem Startzustand', async () => {
   await assertSucceeds(setDoc(cwPath(db(ME)), base));
 });
 
-test('Kreuzwort: Schwierigkeit nur einfach/mittel/schwer, höchstens 2 Startbuchstaben', async () => {
+test('Kreuzwort: Schwierigkeit nur einfach/mittel/schwer/experte/gott, höchstens 2 Startbuchstaben', async () => {
   const words = [1, 2, 3, 4].map((i) => ({ id: `w${i}`, clue: 'c', answer: 'ABC', x: 0, y: i, across: true }));
   const base = { status: 'playing', turn: ME, createdBy: ME, createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(), size: 9, words, solved: {}, attempts: 0, hintsUsed: 0, revealed: [] };
   await assertFails(setDoc(cwPath(db(ME)), { ...base, difficulty: 'unmöglich' }));
   await assertFails(setDoc(cwPath(db(ME)), { ...base, difficulty: 'easy', revealed: [1, 2, 3] }));
   await assertSucceeds(setDoc(cwPath(db(ME)), { ...base, difficulty: 'easy', revealed: [1, 2] }));
+  for (const level of ['expert', 'god']) {
+    await assertSucceeds(setDoc(doc(db(ME), 'couples', C, 'crosswords', level), { ...base, difficulty: level }));
+  }
 });
 
 test('Kreuzwort: Zug nur wer dran ist, danach ist der Schatz dran', async () => {

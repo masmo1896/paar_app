@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'crossword_logic.dart';
 import 'crossword_words.dart';
+import 'crossword_words_expert.dart';
 
 /// Ein fertiges Rätsel: quadratisches Feld der Kantenlänge [size].
 typedef CrosswordPuzzle = ({int size, List<CrosswordWord> words});
@@ -10,7 +11,9 @@ typedef CrosswordPuzzle = ({int size, List<CrosswordWord> words});
 enum CrosswordLevel {
   easy('Einfach', '9×9 · kurze Wörter · 2 Buchstaben geschenkt'),
   medium('Mittel', '11×11 · 10 Wörter'),
-  hard('Schwer', '13×13 · lange, knifflige Wörter');
+  hard('Schwer', '13×13 · lange, knifflige Wörter'),
+  expert('Experte', '15×15 · seltene Wörter, knappe Hinweise'),
+  god('Gott', '15×15 · extrem schwer · Fach- und Fremdwörter');
 
   const CrosswordLevel(this.label, this.description);
   final String label;
@@ -20,29 +23,48 @@ enum CrosswordLevel {
     easy => 9,
     medium => 11,
     hard => 13,
+    expert => 15,
+    god => 15,
   };
   int get target => switch (this) {
     easy => 7,
     medium => 10,
     hard => 14,
+    expert => 17,
+    god => 20,
   };
   int get minLength => switch (this) {
     easy => 3,
     medium => 3,
     hard => 5,
+    expert => 6,
+    god => 7,
   };
   int get maxLength => switch (this) {
     easy => 6,
     medium => 10,
     hard => 12,
+    expert => 13,
+    god => 14,
   };
 
   /// So viele Buchstaben sind zu Beginn schon aufgedeckt.
   int get giftedLetters => this == easy ? 2 : 0;
 
-  List<(String, String)> get bank => this == hard
-      ? [...crosswordWordsHard, ...crosswordWords]
-      : crosswordWords;
+  List<(String, String)> get bank => switch (this) {
+    easy || medium => crosswordWords,
+    hard => [...crosswordWordsHard, ...crosswordWords],
+    expert => [
+      ...crosswordWordsExpert,
+      ...crosswordWordsHard,
+      ...crosswordWords,
+    ],
+    god => [
+      ...crosswordWordsGod,
+      ...crosswordWordsExpert,
+      ...crosswordWordsHard,
+    ],
+  };
 
   static CrosswordLevel fromName(String? name) =>
       values.firstWhere((l) => l.name == name, orElse: () => medium);
@@ -50,8 +72,10 @@ enum CrosswordLevel {
 
 /// Rätsel für eine Stufe; bei «Einfach» mit [CrosswordLevel.giftedLetters]
 /// zufällig aufgedeckten Feldern (als Feld-Nummern, siehe [cellIndex]).
+/// Wörter aus [avoid] (zuletzt gespielt) kommen nur vor, wenn es sonst nicht reicht.
 ({CrosswordPuzzle puzzle, List<int> revealed}) generateForLevel(
   CrosswordLevel level, {
+  Set<String> avoid = const {},
   Random? random,
 }) {
   final rnd = random ?? Random();
@@ -61,6 +85,7 @@ enum CrosswordLevel {
     target: level.target,
     minLength: level.minLength,
     maxLength: level.maxLength,
+    avoid: avoid,
     random: rnd,
   );
   final cells = {
@@ -79,6 +104,7 @@ CrosswordPuzzle generateCrossword({
   int attempts = 30,
   int minLength = 3,
   int maxLength = 10,
+  Set<String> avoid = const {},
   Random? random,
 }) {
   final rnd = random ?? Random();
@@ -93,7 +119,7 @@ CrosswordPuzzle generateCrossword({
 
   _Layout? best;
   for (var i = 0; i < attempts; i++) {
-    final layout = _Layout(maxSize)..build(usable, target, rnd);
+    final layout = _Layout(maxSize)..build(usable, target, avoid, rnd);
     if (best == null || layout.score > best.score) best = layout;
   }
   return best!.trimmed();
@@ -121,8 +147,18 @@ class _Layout {
 
   int get score => placed.length * 10 + crossings;
 
-  void build(List<(String, String)> bank, int target, Random rnd) {
-    final words = [...bank]..shuffle(rnd);
+  void build(
+    List<(String, String)> bank,
+    int target,
+    Set<String> avoid,
+    Random rnd,
+  ) {
+    // Gemischt, aber frische Wörter vor den zuletzt benutzten.
+    final shuffled = [...bank]..shuffle(rnd);
+    final words = [
+      ...shuffled.where((w) => !avoid.contains(w.$1)),
+      ...shuffled.where((w) => avoid.contains(w.$1)),
+    ];
     // Erstes Wort: lang, waagrecht in die Mitte.
     final first = words.firstWhere(
       (w) => w.$1.length >= 6,

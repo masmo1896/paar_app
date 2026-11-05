@@ -289,7 +289,7 @@ service cloud.firestore {
           request.resource.data.keys().hasOnly(
             ['status', 'turn', 'createdBy', 'createdAt', 'updatedAt', 'size', 'words',
              'solved', 'attempts', 'hintsUsed', 'revealed', 'difficulty']) &&
-          request.resource.data.get('difficulty', 'medium') in ['easy', 'medium', 'hard'] &&
+          request.resource.data.get('difficulty', 'medium') in ['easy', 'medium', 'hard', 'expert', 'god'] &&
           request.resource.data.status == 'playing' &&
           request.resource.data.createdBy == request.auth.uid &&
           request.resource.data.turn == request.auth.uid &&

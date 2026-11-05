@@ -44,8 +44,12 @@ class CrosswordScreen extends StatelessWidget {
 }
 
 Future<void> _newPuzzle(Couple couple, CrosswordLevel level) async {
-  final r = generateForLevel(level);
   try {
+    // Bei Fehlern (z. B. offline) einfach ohne Merkliste würfeln.
+    final recent = await CrosswordService.instance
+        .recentAnswers(couple.coupleId)
+        .catchError((_) => <String>{});
+    final r = generateForLevel(level, avoid: recent);
     await CrosswordService.instance.newGame(
       couple.coupleId,
       r.puzzle.size,
@@ -66,7 +70,7 @@ class _Start extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-    child: Padding(
+    child: SingleChildScrollView(
       padding: const EdgeInsets.all(28),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -92,7 +96,7 @@ class _Start extends StatelessWidget {
   );
 }
 
-/// Drei gleich grosse Knöpfe: Einfach / Mittel / Schwer.
+/// Gleich grosse Knöpfe: Einfach / Mittel / Schwer / Experte / Gott.
 class _LevelPicker extends StatefulWidget {
   const _LevelPicker({required this.onPick});
 
@@ -141,6 +145,8 @@ class _LevelPickerState extends State<_LevelPicker> {
                         CrosswordLevel.easy => '易',
                         CrosswordLevel.medium => '中',
                         CrosswordLevel.hard => '難',
+                        CrosswordLevel.expert => '極',
+                        CrosswordLevel.god => '神',
                       },
                       size: 26,
                       filled: level != CrosswordLevel.easy,

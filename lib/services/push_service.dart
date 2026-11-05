@@ -51,9 +51,9 @@ class PushService {
       await _saveToken(await _messaging.getToken());
       _refreshSub = _messaging.onTokenRefresh.listen(_saveToken);
     } catch (e) {
-      // Beim iPhone ohne bezahltes Apple-Entwicklerkonto gibt es keinen Push-Token.
+      // Kein Push-Token (z. B. Erlaubnis fehlt oder Simulator ohne APNs).
       // Die App läuft dann einfach ohne Benachrichtigungen weiter.
-      // Nur als Notiz (kein Fehlerbericht), sonst meldet jedes iPhone-Start einen Fehler.
+      // Nur als Notiz (kein Fehlerbericht), sonst meldet jeder solche Start einen Fehler.
       AppLogger.info('Push nicht verfügbar: ${e.runtimeType}');
     }
 

@@ -63,7 +63,7 @@ class CrosswordGame {
   final int attempts;
   final int hintsUsed;
 
-  /// 'easy', 'medium' oder 'hard' (ältere Rätsel: 'medium').
+  /// 'easy', 'medium', 'hard', 'expert' oder 'god' (ältere Rätsel: 'medium').
   final String difficulty;
 
   bool get isDone => status == 'done';
@@ -118,6 +118,19 @@ class CrosswordService {
             .snapshots()
             .map((s) => s.size),
   );
+
+  /// Lösungswörter der letzten [games] Rätsel – damit sich Wörter nicht ständig wiederholen.
+  Future<Set<String>> recentAnswers(String coupleId, {int games = 5}) async {
+    final snap = await _games(coupleId)
+        .orderBy('createdAt', descending: true)
+        .limit(games)
+        .get();
+    return {
+      for (final d in snap.docs)
+        for (final w in (d.data()['words'] as List?) ?? const [])
+          if ((w as Map)['answer'] is String) w['answer'] as String,
+    };
+  }
 
   /// Neues Rätsel; wer es startet, beginnt.
   Future<void> newGame(

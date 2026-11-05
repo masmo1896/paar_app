@@ -6,6 +6,7 @@ import 'package:paar_app/utils/battleship_logic.dart';
 import 'package:paar_app/utils/crossword_generator.dart';
 import 'package:paar_app/utils/crossword_logic.dart';
 import 'package:paar_app/utils/crossword_words.dart';
+import 'package:paar_app/utils/crossword_words_expert.dart';
 
 void main() {
   group('Kreuzwort', () {
@@ -67,10 +68,49 @@ void main() {
       }
     });
 
+    test('Experten- und Gott-Wörter: normalisiert, nirgends doppelt', () {
+      final others = {
+        for (final (a, _) in [...crosswordWords, ...crosswordWordsHard]) a,
+      };
+      final seen = <String>{};
+      for (final (answer, clue) in [
+        ...crosswordWordsExpert,
+        ...crosswordWordsGod,
+      ]) {
+        expect(normalizeAnswer(answer), answer, reason: answer);
+        expect(clue.trim(), isNotEmpty, reason: answer);
+        expect(seen.add(answer), isTrue, reason: 'doppelt: $answer');
+        expect(others.contains(answer), isFalse, reason: 'schon da: $answer');
+      }
+    });
+
+    test('Zuletzt gespielte Wörter werden gemieden', () {
+      for (final level in CrosswordLevel.values) {
+        for (var seed = 0; seed < 10; seed++) {
+          final first = generateForLevel(level, random: Random(seed)).puzzle;
+          final used = {for (final w in first.words) w.answer};
+          final next = generateForLevel(
+            level,
+            avoid: used,
+            random: Random(seed + 100),
+          ).puzzle;
+          // Ganz ohne Wiederholung geht es nur, wenn genug frische Wörter passen.
+          final again = next.words.where((w) => used.contains(w.answer));
+          expect(
+            again.length,
+            lessThanOrEqualTo(2),
+            reason: '${level.label} seed $seed',
+          );
+        }
+      }
+    });
+
     for (final (level, minWords) in [
       (CrosswordLevel.easy, 5),
       (CrosswordLevel.medium, 7),
       (CrosswordLevel.hard, 10),
+      (CrosswordLevel.expert, 12),
+      (CrosswordLevel.god, 12),
     ]) {
       test('${level.label}: Grösse, Wortanzahl, Wortlänge, alles kreuzt', () {
         var total = 0;

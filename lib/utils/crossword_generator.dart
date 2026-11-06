@@ -9,12 +9,15 @@ typedef CrosswordPuzzle = ({int size, List<CrosswordWord> words});
 
 /// Schwierigkeit: Grösse, Wortanzahl, Wortlänge und aufgedeckte Startbuchstaben.
 enum CrosswordLevel {
-  veryEasy('Sehr leicht', '7×7 · 5 kurze Wörter · 4 Buchstaben geschenkt'),
-  easy('Einfach', '9×9 · kurze Wörter · 2 Buchstaben geschenkt'),
-  medium('Mittel', '11×11 · 10 Wörter'),
-  hard('Schwer', '13×13 · lange, knifflige Wörter · 8 Buchstaben-Hinweise'),
-  expert('Experte', '15×15 · seltene Wörter · nur 5 Hinweise'),
-  god('Gott', '15×15 · extrem schwer · Fachwörter · nur 3 Hinweise');
+  veryEasy(
+    'Sehr leicht',
+    '7×7 · 5 kurze Wörter · 4 Buchstaben geschenkt · 3 Hinweise',
+  ),
+  easy('Einfach', '9×9 · kurze Wörter · 2 Buchstaben geschenkt · 5 Hinweise'),
+  medium('Mittel', '11×11 · 10 Wörter · 8 Hinweise'),
+  hard('Schwer', '13×13 · lange, knifflige Wörter · 12 Hinweise'),
+  expert('Experte', '15×15 · seltene Wörter · 16 Hinweise'),
+  god('Gott', '15×15 · extrem schwer · Fachwörter · 20 Hinweise');
 
   const CrosswordLevel(this.label, this.description);
   final String label;
@@ -23,12 +26,14 @@ enum CrosswordLevel {
   /// Sterne in der Auswahl: 1 (sehr leicht) bis 6 (Gott).
   int get stars => index + 1;
 
-  /// So oft darf man einen Buchstaben aufdecken («Gott» fast nie).
+  /// So oft darf man einen Buchstaben aufdecken – je schwerer, desto öfter.
   int get maxHints => switch (this) {
-    veryEasy || easy || medium => 99,
-    hard => 8,
-    expert => 5,
-    god => 3,
+    veryEasy => 3,
+    easy => 5,
+    medium => 8,
+    hard => 12,
+    expert => 16,
+    god => 20,
   };
 
   /// Wie viel ein Wort wert ist (Punkte pro Buchstabe).
@@ -102,10 +107,11 @@ enum CrosswordLevel {
 
 /// Rätsel für eine Stufe; bei «Einfach» mit [CrosswordLevel.giftedLetters]
 /// zufällig aufgedeckten Feldern (als Feld-Nummern, siehe [cellIndex]).
-/// Wörter aus [avoid] (zuletzt gespielt) kommen nur vor, wenn es sonst nicht reicht.
+/// [avoid]: zuletzt gespielte Wörter, das neueste zuerst. Sie kommen nur vor, wenn es
+/// sonst nicht reicht – und dann die am längsten nicht mehr gesehenen zuerst.
 ({CrosswordPuzzle puzzle, List<int> revealed}) generateForLevel(
   CrosswordLevel level, {
-  Set<String> avoid = const {},
+  List<String> avoid = const [],
   Random? random,
 }) {
   final rnd = random ?? Random();
@@ -134,7 +140,7 @@ CrosswordPuzzle generateCrossword({
   int attempts = 30,
   int minLength = 3,
   int maxLength = 10,
-  Set<String> avoid = const {},
+  List<String> avoid = const [],
   Random? random,
 }) {
   final rnd = random ?? Random();
@@ -174,20 +180,32 @@ class _Layout {
   final _usedDown = <Point<int>>{};
   final placed = <_Placed>[];
   var crossings = 0;
+  // Wörter, die ihr schon einmal gespielt habt (machen eine Variante schlechter).
+  var repeats = 0;
 
-  int get score => placed.length * 10 + crossings;
+  int get score => placed.length * 10 + crossings - repeats * 8;
 
   void build(
     List<(String, String)> bank,
     int target,
-    Set<String> avoid,
+    List<String> avoid,
     Random rnd,
   ) {
-    // Gemischt, aber frische Wörter vor den zuletzt benutzten.
+    // Gemischt; zuerst nie gespielte Wörter, danach die am längsten nicht
+    // mehr gesehenen (bei Gleichstand bleibt die Zufallsreihenfolge).
+    final seen = {for (var i = 0; i < avoid.length; i++) avoid[i]: i};
     final shuffled = [...bank]..shuffle(rnd);
+    final stale =
+        [
+          for (var i = 0; i < shuffled.length; i++)
+            if (seen.containsKey(shuffled[i].$1)) (word: shuffled[i], pos: i),
+        ]..sort((a, b) {
+          final age = seen[b.word.$1]! - seen[a.word.$1]!;
+          return age != 0 ? age : a.pos - b.pos;
+        });
     final words = [
-      ...shuffled.where((w) => !avoid.contains(w.$1)),
-      ...shuffled.where((w) => avoid.contains(w.$1)),
+      ...shuffled.where((w) => !seen.containsKey(w.$1)),
+      for (final s in stale) s.word,
     ];
     // Erstes Wort: lang, waagrecht in die Mitte.
     final first = words.firstWhere(
@@ -204,6 +222,7 @@ class _Layout {
       ),
     );
     final used = {first.$1};
+    if (seen.containsKey(first.$1)) repeats++;
 
     for (final (answer, clue) in words) {
       if (placed.length >= target) break;
@@ -212,6 +231,7 @@ class _Layout {
       if (spot == null) continue;
       _place(_Placed(answer, clue, spot.x, spot.y, spot.across));
       crossings += spot.crosses;
+      if (seen.containsKey(answer)) repeats++;
       used.add(answer);
     }
   }

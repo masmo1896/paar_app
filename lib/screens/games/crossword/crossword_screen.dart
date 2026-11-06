@@ -8,39 +8,231 @@ import '../../../services/crossword_service.dart';
 import '../../../theme.dart';
 import '../../../utils/crossword_generator.dart';
 import '../../../utils/crossword_logic.dart';
+import '../../../utils/crossword_tips.dart';
+import '../../../widgets/lantern_backdrop.dart';
 import '../../../widgets/motion.dart';
+import '../../../widgets/partner_header.dart';
 import '../../../widgets/who.dart';
 import '../effects.dart';
 
 /// Gemeinsames Kreuzworträtsel: abwechselnd ein Wort raten oder einen
-/// Buchstaben aufdecken. Gelöst wird zusammen.
-class CrosswordScreen extends StatelessWidget {
+/// Buchstaben aufdecken. Gelöst wird zusammen. Aufgebaut wie die Startseite:
+/// Laternen-Illustration im Hintergrund (Parallax), Kopf mit japanischer Zeile,
+/// darunter die Karten.
+class CrosswordScreen extends StatefulWidget {
   const CrosswordScreen({super.key, required this.couple});
 
   final Couple couple;
 
   @override
+  State<CrosswordScreen> createState() => _CrosswordScreenState();
+}
+
+class _CrosswordScreenState extends State<CrosswordScreen> {
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final couple = widget.couple;
+    final top = MediaQuery.paddingOf(context).top;
     return Scaffold(
-      backgroundColor: Kitsune.deeper,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: Text('Kreuzworträtsel', style: AppTheme.serif(size: 20)),
-      ),
-      body: StreamBuilder<CrosswordGame?>(
-        stream: CrosswordService.instance.current(couple.coupleId),
-        builder: (context, snap) {
-          if (!snap.hasData &&
-              snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final game = snap.data;
-          if (game == null) return _Start(couple: couple, first: true);
-          return _Puzzle(key: ValueKey(game.id), couple: couple, game: game);
-        },
+      body: Stack(
+        children: [
+          Positioned(
+            top: -44,
+            left: 0,
+            right: 0,
+            height: 300 + top,
+            child: LanternBackdrop(scroll: _scroll),
+          ),
+          StreamBuilder<CrosswordGame?>(
+            stream: CrosswordService.instance.current(couple.coupleId),
+            builder: (context, snap) {
+              final loading =
+                  !snap.hasData &&
+                  snap.connectionState == ConnectionState.waiting;
+              final game = snap.data;
+              return ListView(
+                controller: _scroll,
+                padding: EdgeInsets.zero,
+                children: [
+                  _Header(couple: couple, game: game),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+                    child: loading
+                        ? const Padding(
+                            padding: EdgeInsets.only(top: 40),
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        : game == null
+                        ? FadeSlideIn(
+                            key: const ValueKey('start'),
+                            child: _Start(couple: couple, first: true),
+                          )
+                        : FadeSlideIn(
+                            key: ValueKey('in-${game.id}'),
+                            child: _Puzzle(
+                              key: ValueKey(game.id),
+                              couple: couple,
+                              game: game,
+                            ),
+                          ),
+                  ),
+                ],
+              );
+            },
+          ),
+          // Zurück-Knopf schwebt über den Laternen, wie die Knöpfe im Chat.
+          Positioned(
+            top: top + 8,
+            left: 12,
+            child: HeaderCircle(
+              child: IconButton(
+                style: HeaderCircle.buttonStyle,
+                tooltip: 'Zurück',
+                icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                onPressed: () => Navigator.maybePop(context),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
+}
+
+/// Kopf wie auf der Startseite: «くろすわーど / Kreuzworträtsel / Stufe und
+/// Fortschritt», darunter wie die Tagesweisheit eure gemeinsame Bilanz.
+class _Header extends StatelessWidget {
+  const _Header({required this.couple, required this.game});
+
+  final Couple couple;
+  final CrosswordGame? game;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = game;
+    final level = g == null ? null : CrosswordLevel.fromName(g.difficulty);
+    final line = g == null || level == null
+        ? 'Von sehr leicht bis Gott – ihr wählt'
+        : g.isDone
+        ? '${level.label} · gelöst ✓'
+        : '${level.label} ${'★' * level.stars} · '
+              '${g.solved.length} von ${g.words.length} Wörtern';
+    final top = MediaQuery.paddingOf(context).top;
+    return SizedBox(
+      height: 236 + top,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 22,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'くろすわーど',
+                  style: AppTheme.serif(
+                    size: 12,
+                    weight: FontWeight.w600,
+                    color: Kitsune.aqua,
+                  ).copyWith(letterSpacing: 3.6),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Kreuzworträtsel',
+                  style: AppTheme.serif(size: 25).copyWith(
+                    shadows: const [
+                      Shadow(color: Kitsune.deep, blurRadius: 10),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  line,
+                  style: const TextStyle(fontSize: 12, color: Kitsune.mist),
+                ),
+                const SizedBox(height: 10),
+                _TogetherLine(couple: couple),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// «一緒に解いた – Ihr habt schon 12 Rätsel zusammen gelöst», mit dem feinen
+/// roten Strich wie bei der Weisheit des Tages.
+class _TogetherLine extends StatelessWidget {
+  const _TogetherLine({required this.couple});
+
+  final Couple couple;
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<int>(
+    stream: CrosswordService.instance.solvedCount(couple.coupleId),
+    builder: (context, snap) {
+      final n = snap.data ?? 0;
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 2,
+            height: 34,
+            margin: const EdgeInsets.only(right: 10, top: 2),
+            color: Kitsune.lantern.withValues(alpha: 0.8),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '一緒に解いた',
+                  style: AppTheme.serif(size: 14, color: Kitsune.paper),
+                ),
+                Text(
+                  n == 0
+                      ? 'Euer erstes gemeinsames Rätsel wartet'
+                      : n == 1
+                      ? 'Ein Rätsel habt ihr schon zusammen gelöst'
+                      : '$n Rätsel habt ihr schon zusammen gelöst',
+                  style: const TextStyle(fontSize: 12, color: Kitsune.mist),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+/// Karte wie auf der Startseite: dunkles Nachtblau, feiner heller Rand.
+class _Card extends StatelessWidget {
+  const _Card({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+    decoration: BoxDecoration(
+      color: Kitsune.deep.withValues(alpha: 0.85),
+      borderRadius: BorderRadius.circular(6),
+      border: Border.all(color: const Color(0x40F3EBD3)),
+    ),
+    child: child,
+  );
 }
 
 Future<void> _newPuzzle(
@@ -53,7 +245,7 @@ Future<void> _newPuzzle(
     // Bei Fehlern (z. B. offline) einfach ohne Merkliste würfeln.
     final recent = await CrosswordService.instance
         .recentAnswers(couple.coupleId)
-        .catchError((_) => <String>{});
+        .catchError((_) => <String>[]);
     final r = generateForLevel(level, avoid: recent);
     await CrosswordService.instance.newGame(
       couple.coupleId,
@@ -82,30 +274,39 @@ class _Start extends StatelessWidget {
   final bool first;
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: SingleChildScrollView(
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Hanko('謎', size: 54),
-          const SizedBox(height: 18),
-          Text(
-            first ? 'Euer erstes Rätsel' : 'Neues Rätsel',
-            style: AppTheme.serif(size: 22),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Ihr löst es zusammen: Abwechselnd ratet ihr ein Wort oder deckt '
-            'einen Buchstaben auf. Danach ist ${couple.partnerLabel} dran.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Kitsune.mist),
-          ),
-          const SizedBox(height: 22),
-          _LevelPicker(onPick: (level) => _newPuzzle(context, couple, level)),
-        ],
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _Card(
+        child: Row(
+          children: [
+            const Hanko('謎', size: 40),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    first ? 'Euer erstes Rätsel' : 'Neues Rätsel',
+                    style: AppTheme.serif(size: 19),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Abwechselnd ein Wort prüfen oder einen Buchstaben aufdecken. '
+                    'Jedes Wort hat einen versiegelten Tipp 💡.',
+                    style: const TextStyle(fontSize: 13, color: Kitsune.mist),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
+      const SizedBox(height: 16),
+      Text('WIE KNIFFLIG?', style: AppTheme.label()),
+      const SizedBox(height: 8),
+      _LevelPicker(onPick: (level) => _newPuzzle(context, couple, level)),
+    ],
   );
 }
 
@@ -306,6 +507,27 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
   bool get _myTurn =>
       !widget.game.isDone && widget.game.turn == widget.couple.myUid;
 
+  // Tipps, die nur hier sichtbar sind (falls die Server-Regeln sie noch nicht kennen).
+  final _localTips = <String>{};
+  Set<String> get _tips => {...widget.game.tips, ..._localTips};
+
+  /// Tipp aufdecken. true = er darf angezeigt werden.
+  Future<bool> _revealTip(CrosswordWord word) async {
+    try {
+      final shared = await CrosswordService.instance.revealTip(
+        widget.couple.coupleId,
+        widget.game,
+        word,
+      );
+      if (!shared && mounted) setState(() => _localTips.add(word.id));
+      return true;
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'Kreuzwort: Tipp');
+      _saveFailed();
+      return false;
+    }
+  }
+
   CrosswordWord? get _word =>
       widget.game.words.where((w) => w.id == _selected).firstOrNull;
 
@@ -342,6 +564,10 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
         onGuess: (text) => _guess(word, text),
         onHint: () => _hint(word),
         hintsLeft: _level.maxHints - widget.game.hintsUsed,
+        tip: crosswordTipFor(word.answer),
+        tipOpen: _tips.contains(word.id),
+        tipCost: _level.pointsPerLetter * 2,
+        onTip: () => _revealTip(word),
       ),
     );
   }
@@ -431,8 +657,8 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
     final across = g.words.where((w) => w.across).toList();
     final down = g.words.where((w) => !w.across).toList();
     final numbers = clueNumbers(g.words);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _TurnBar(game: g, couple: widget.couple),
         if (_myTurn) _MoveBanner(game: g, couple: widget.couple),
@@ -451,7 +677,8 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
           '${CrosswordLevel.fromName(g.difficulty).label} · '
           '${g.solved.length} von ${g.words.length} Wörtern · '
           '${g.attempts} ${g.attempts == 1 ? 'Versuch' : 'Versuche'} · '
-          '${g.hintsUsed} ${g.hintsUsed == 1 ? 'Hinweis' : 'Hinweise'}',
+          '${g.hintsUsed} ${g.hintsUsed == 1 ? 'Hinweis' : 'Hinweise'}'
+          '${_tips.isEmpty ? '' : ' · ${_tips.length} ${_tips.length == 1 ? 'Tipp' : 'Tipps'}'}',
           style: const TextStyle(fontSize: 12, color: Kitsune.mist),
         ),
         const SizedBox(height: 12),
@@ -473,6 +700,10 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
                         selected: _word,
                         fresh: _fresh,
                         stamp: _stamp.value,
+                        tipStarts: {
+                          for (final w in g.words)
+                            if (_tips.contains(w.id)) Point(w.x, w.y),
+                        },
                         onTap: _tapCell,
                       ),
                     ),
@@ -509,29 +740,37 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
           ),
           const SizedBox(height: 18),
         ],
-        _ClueList(
-          title: 'WAAGRECHT →',
-          words: across,
-          numbers: numbers,
-          game: g,
-          selected: _selected,
-          onTap: (w) {
-            setState(() => _selected = w.id);
-            _openInput(w);
-          },
-        ),
+        if (across.isNotEmpty)
+          _Card(
+            child: _ClueList(
+              title: 'WAAGRECHT →',
+              words: across,
+              numbers: numbers,
+              game: g,
+              tips: _tips,
+              selected: _selected,
+              onTap: (w) {
+                setState(() => _selected = w.id);
+                _openInput(w);
+              },
+            ),
+          ),
         const SizedBox(height: 14),
-        _ClueList(
-          title: 'SENKRECHT ↓',
-          words: down,
-          numbers: numbers,
-          game: g,
-          selected: _selected,
-          onTap: (w) {
-            setState(() => _selected = w.id);
-            _openInput(w);
-          },
-        ),
+        if (down.isNotEmpty)
+          _Card(
+            child: _ClueList(
+              title: 'SENKRECHT ↓',
+              words: down,
+              numbers: numbers,
+              game: g,
+              tips: _tips,
+              selected: _selected,
+              onTap: (w) {
+                setState(() => _selected = w.id);
+                _openInput(w);
+              },
+            ),
+          ),
       ],
     );
   }
@@ -589,6 +828,7 @@ class _Grid extends StatelessWidget {
     required this.selected,
     required this.fresh,
     required this.stamp,
+    required this.tipStarts,
     required this.onTap,
   });
 
@@ -598,6 +838,9 @@ class _Grid extends StatelessWidget {
   final CrosswordWord? selected;
   final Set<Point<int>> fresh;
   final double stamp;
+
+  /// Anfangsfelder von Wörtern, deren Tipp aufgedeckt ist (kleines Lämpchen).
+  final Set<Point<int>> tipStarts;
   final ValueChanged<Point<int>> onTap;
 
   @override
@@ -628,6 +871,7 @@ class _Grid extends StatelessWidget {
                     by: filled[e.key],
                     myUid: couple.myUid,
                     number: numbers[e.key],
+                    tip: tipStarts.contains(e.key),
                     selected: sel.contains(e.key),
                     scale: fresh.contains(e.key)
                         ? Curves.elasticOut.transform(stamp)
@@ -650,6 +894,7 @@ class _Cell extends StatelessWidget {
     required this.number,
     required this.selected,
     required this.scale,
+    this.tip = false,
   });
 
   final String? letter;
@@ -658,6 +903,7 @@ class _Cell extends StatelessWidget {
   final int? number;
   final bool selected;
   final double scale;
+  final bool tip;
 
   @override
   Widget build(BuildContext context) {
@@ -702,6 +948,25 @@ class _Cell extends StatelessWidget {
                     ),
                   ),
                 ),
+              if (tip)
+                Positioned(
+                  right: 2,
+                  top: 2,
+                  child: Container(
+                    width: c.maxWidth * 0.17,
+                    height: c.maxWidth * 0.17,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Kitsune.lantern,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Kitsune.lantern.withValues(alpha: 0.6),
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               if (letter != null)
                 Center(
                   child: Transform.scale(
@@ -729,6 +994,7 @@ class _ClueList extends StatelessWidget {
     required this.words,
     required this.numbers,
     required this.game,
+    required this.tips,
     required this.selected,
     required this.onTap,
   });
@@ -737,6 +1003,9 @@ class _ClueList extends StatelessWidget {
   final List<CrosswordWord> words;
   final Map<Point<int>, int> numbers;
   final CrosswordGame game;
+
+  /// Wörter mit aufgedecktem Tipp.
+  final Set<String> tips;
   final String? selected;
   final ValueChanged<CrosswordWord> onTap;
 
@@ -771,17 +1040,36 @@ class _ClueList extends StatelessWidget {
                     ),
                   ),
                   Expanded(
-                    child: Text(
-                      '${w.clue} (${w.answer.length})',
-                      style: TextStyle(
-                        fontSize: 14,
-                        decoration: game.solved.containsKey(w.id)
-                            ? TextDecoration.lineThrough
-                            : null,
-                        color: game.solved.containsKey(w.id)
-                            ? Kitsune.dim
-                            : Kitsune.paper,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${w.clue} (${w.answer.length})',
+                          style: TextStyle(
+                            fontSize: 14,
+                            decoration: game.solved.containsKey(w.id)
+                                ? TextDecoration.lineThrough
+                                : null,
+                            color: game.solved.containsKey(w.id)
+                                ? Kitsune.dim
+                                : Kitsune.paper,
+                          ),
+                        ),
+                        if (tips.contains(w.id) &&
+                            !game.solved.containsKey(w.id) &&
+                            crosswordTipFor(w.answer) != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 3),
+                            child: Text(
+                              '💡 ${crosswordTipFor(w.answer)}',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontStyle: FontStyle.italic,
+                                color: Kitsune.aqua,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   if (game.solved.containsKey(w.id))
@@ -807,9 +1095,19 @@ class _GuessSheet extends StatefulWidget {
     required this.onGuess,
     required this.onHint,
     required this.hintsLeft,
+    required this.tip,
+    required this.tipOpen,
+    required this.tipCost,
+    required this.onTip,
   });
 
   final int hintsLeft;
+
+  /// Zweiter, hilfreicherer Hinweis (null = gibt es für dieses Wort nicht).
+  final String? tip;
+  final bool tipOpen;
+  final int tipCost;
+  final Future<bool> Function() onTip;
   final CrosswordWord word;
   final int number;
   final List<String?> known;
@@ -868,6 +1166,15 @@ class _GuessSheetState extends State<_GuessSheet>
         ),
         const SizedBox(height: 6),
         Text(w.clue, style: AppTheme.serif(size: 19)),
+        if (widget.tip != null) ...[
+          const SizedBox(height: 12),
+          _TipCard(
+            tip: widget.tip!,
+            open: widget.tipOpen,
+            cost: widget.tipCost,
+            onReveal: widget.onTip,
+          ),
+        ],
         const SizedBox(height: 10),
         Text(
           pattern,
@@ -906,7 +1213,11 @@ class _GuessSheetState extends State<_GuessSheet>
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _busy || widget.hintsLeft <= 0
+                // Gesperrt, wenn keine Hinweise mehr übrig oder alle Buchstaben schon da sind.
+                onPressed:
+                    _busy ||
+                        widget.hintsLeft <= 0 ||
+                        !widget.known.contains(null)
                     ? null
                     : () async {
                         setState(() => _busy = true);
@@ -920,9 +1231,7 @@ class _GuessSheetState extends State<_GuessSheet>
                       },
                 icon: const Icon(Icons.lightbulb_outline_rounded),
                 label: Text(
-                  widget.hintsLeft >= 99
-                      ? 'Buchstabe'
-                      : widget.hintsLeft <= 0
+                  widget.hintsLeft <= 0
                       ? 'Keine Hinweise mehr'
                       : 'Buchstabe (${widget.hintsLeft})',
                 ),
@@ -932,14 +1241,14 @@ class _GuessSheetState extends State<_GuessSheet>
             Expanded(
               child: FilledButton(
                 onPressed: _busy ? null : _submit,
-                child: const Text('Raten'),
+                child: const Text('Wort prüfen'),
               ),
             ),
           ],
         ),
         const SizedBox(height: 6),
         const Text(
-          'Raten oder Buchstabe aufdecken – beides beendet deinen Zug.',
+          'Wort prüfen oder Buchstabe aufdecken beendet deinen Zug – ein Tipp nicht.',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, color: Kitsune.mist),
         ),
@@ -968,7 +1277,8 @@ class _MoveBanner extends StatelessWidget {
     final (icon, title, detail) = switch (move.type) {
       'solved' => (
         '✨',
-        '$partner hat «${word.answer}» gelöst',
+        '$partner hat «${word.answer}» gelöst'
+            '${game.tips.contains(word.id) ? ' (mit Tipp 💡)' : ''}',
         '$where · ${word.clue}',
       ),
       'hint' => (
@@ -1037,6 +1347,7 @@ class _ResultCard extends StatelessWidget {
       solved: game.solved.length,
       attempts: game.attempts,
       hints: game.hintsUsed,
+      tips: game.tips.length,
       pointsPerLetter: level.pointsPerLetter,
     );
     final mine = game.solved.values.where((u) => u == couple.myUid).length;
@@ -1065,7 +1376,8 @@ class _ResultCard extends StatelessWidget {
           Text(
             'Du $mine · ${couple.partnerLabel} $theirs Wörter\n'
             '${score.misses} ${score.misses == 1 ? 'Fehlversuch' : 'Fehlversuche'} · '
-            '${game.hintsUsed} ${game.hintsUsed == 1 ? 'Hinweis' : 'Hinweise'}',
+            '${game.hintsUsed} ${game.hintsUsed == 1 ? 'Hinweis' : 'Hinweise'} · '
+            '${game.tips.length} ${game.tips.length == 1 ? 'Tipp' : 'Tipps'}',
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 13, color: Kitsune.mist),
           ),
@@ -1073,4 +1385,197 @@ class _ResultCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Versiegelter Tipp. Antippen dreht die Karte um und zeigt ihn – für euch
+/// beide sichtbar, kostet Punkte, der Zug bleibt.
+class _TipCard extends StatefulWidget {
+  const _TipCard({
+    required this.tip,
+    required this.open,
+    required this.cost,
+    required this.onReveal,
+  });
+
+  final String tip;
+  final bool open;
+  final int cost;
+  final Future<bool> Function() onReveal;
+
+  @override
+  State<_TipCard> createState() => _TipCardState();
+}
+
+class _TipCardState extends State<_TipCard> with TickerProviderStateMixin {
+  late final _flip = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 800),
+    value: widget.open ? 1 : 0,
+  );
+  // Lichtstreifen, der über das Siegel wandert.
+  late final _shine = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2600),
+  );
+  bool _busy = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Hier statt in initState: reduceMotion liest die Systemeinstellung.
+    final animate = !widget.open && _flip.value == 0 && !reduceMotion(context);
+    if (animate && !_shine.isAnimating) _shine.repeat();
+    if (!animate && _shine.isAnimating) _shine.stop();
+  }
+
+  @override
+  void dispose() {
+    _flip.dispose();
+    _shine.dispose();
+    super.dispose();
+  }
+
+  Future<void> _reveal() async {
+    if (_busy || _flip.value > 0) return;
+    setState(() => _busy = true);
+    HapticFeedback.selectionClick();
+    final ok = await widget.onReveal();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!ok) return;
+    _shine.stop();
+    HapticFeedback.mediumImpact();
+    if (reduceMotion(context)) {
+      _flip.value = 1;
+    } else {
+      await _flip.animateTo(1, curve: Curves.easeOutBack);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedSize(
+    duration: const Duration(milliseconds: 250),
+    curve: Curves.easeOut,
+    alignment: Alignment.topCenter,
+    child: AnimatedBuilder(
+      animation: Listenable.merge([_flip, _shine]),
+      builder: (context, _) {
+        final angle = _flip.value * pi;
+        final back = angle > pi / 2;
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.0015)
+            ..rotateY(angle),
+          child: back
+              ? Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.rotationY(pi),
+                  child: _back(),
+                )
+              : _front(),
+        );
+      },
+    ),
+  );
+
+  Widget _front() {
+    final x = -1.8 + 3.6 * _shine.value;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _busy ? null : _reveal,
+        borderRadius: BorderRadius.circular(8),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Kitsune.lantern.withValues(alpha: 0.7)),
+            gradient: LinearGradient(
+              begin: Alignment(x - 0.6, -1),
+              end: Alignment(x + 0.6, 1),
+              colors: [
+                Kitsune.plum.withValues(alpha: 0.55),
+                const Color(0xCCB4567F),
+                Kitsune.plum.withValues(alpha: 0.55),
+              ],
+            ),
+          ),
+          child: Row(
+            children: [
+              const Hanko('秘', size: 26),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Tipp aufdecken',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      '−${widget.cost} Punkte · du bleibst am Zug',
+                      style: const TextStyle(fontSize: 12, color: Kitsune.mist),
+                    ),
+                  ],
+                ),
+              ),
+              if (_busy)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                const Icon(Icons.touch_app_rounded, color: Kitsune.paper),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _back() => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.fromLTRB(14, 11, 14, 13),
+    decoration: BoxDecoration(
+      color: Kitsune.paper,
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: Kitsune.hairline),
+      boxShadow: [
+        BoxShadow(
+          color: Kitsune.lantern.withValues(alpha: 0.35),
+          blurRadius: 14,
+        ),
+      ],
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('💡', style: TextStyle(fontSize: 22)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'TIPP',
+                style: TextStyle(
+                  fontSize: 11,
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.w700,
+                  color: Kitsune.lantern,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                widget.tip,
+                style: AppTheme.serif(size: 16, color: Kitsune.night),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 }

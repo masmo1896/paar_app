@@ -336,6 +336,15 @@ service cloud.firestore {
           request.resource.data.revealed is list &&
           request.resource.data.revealed.hasAll(resource.data.revealed) &&
           request.resource.data.updatedAt == request.time;
+        // Tipp aufdecken: nur wer dran ist, der Zug bleibt. Tipps kommen nur dazu.
+        allow update: if isMember(coupleId) &&
+          resource.data.status == 'playing' &&
+          resource.data.turn == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tips', 'updatedAt']) &&
+          request.resource.data.tips is list &&
+          request.resource.data.tips.hasAll(resource.data.get('tips', [])) &&
+          request.resource.data.tips.size() <= resource.data.words.size() &&
+          request.resource.data.updatedAt == request.time;
       }
 
       // Verstecktes Kanji des Tages: jede Person trägt nur sich selbst als

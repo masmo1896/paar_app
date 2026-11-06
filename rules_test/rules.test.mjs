@@ -341,6 +341,19 @@ test('Kreuzwort: Zug nur wer dran ist, danach ist der Schatz dran', async () => 
   await assertSucceeds(updateDoc(cwPath(db(ME)), { ...move, lastMove: { by: ME, type: 'solved', wordId: 'w2' } }));
 });
 
+test('Kreuzwort: Tipp aufdecken nur am Zug, Zug bleibt, Tipps verschwinden nicht', async () => {
+  await seedCrossword({ words: [{ id: 'w1' }, { id: 'w2' }] });
+  const tip = (ids) => ({ tips: ids, updatedAt: serverTimestamp() });
+  await assertFails(updateDoc(cwPath(db(LOVE)), tip(['w1'])));               // nicht am Zug
+  await assertFails(updateDoc(cwPath(db(STRANGER)), tip(['w1'])));
+  await assertFails(updateDoc(cwPath(db(ME)), { ...tip(['w1']), turn: LOVE })); // nur Tipp, kein Zug
+  await assertFails(updateDoc(cwPath(db(ME)), { ...tip(['w1']), solved: { w1: ME } }));
+  await assertSucceeds(updateDoc(cwPath(db(ME)), tip(['w1'])));
+  await assertFails(updateDoc(cwPath(db(ME)), tip([])));                      // nichts zurücknehmen
+  await assertSucceeds(updateDoc(cwPath(db(ME)), tip(['w1', 'w2'])));
+  await assertFails(updateDoc(cwPath(db(ME)), tip(['w1', 'w2', 'x', 'y'])));  // nicht mehr Tipps als Wörter
+});
+
 test('Kreuzwort: gelöste Wörter und Lösung bleiben unverändert', async () => {
   await seedCrossword();
   await assertFails(updateDoc(cwPath(db(ME)), { solved: {}, turn: LOVE, updatedAt: serverTimestamp() }));

@@ -11,6 +11,7 @@ import '../utils/shared_stream.dart';
 //                                   words: [{id, clue, answer, x, y, across}],
 //                                   solved: {wordId: uid}, revealed: [Feld-Nr.],
 //                                   lastMove?: {by, type: 'solved'|'miss'|'hint', wordId},
+//                                   tips?: [wordId] (aufgedeckte Tipps, für beide sichtbar),
 //                                   attempts, hintsUsed, createdBy, createdAt, updatedAt }
 // Ihr löst gemeinsam: abwechselnd ein Wort raten oder einen Buchstaben aufdecken.
 
@@ -27,6 +28,7 @@ class CrosswordGame {
     required this.hintsUsed,
     this.difficulty = 'medium',
     this.lastMove,
+    this.tips = const {},
   });
 
   factory CrosswordGame.fromDoc(DocumentSnapshot<Map<String, dynamic>> d) {
@@ -56,6 +58,10 @@ class CrosswordGame {
         ),
         _ => null,
       },
+      tips: {
+        for (final v in (m['tips'] as List?) ?? const [])
+          if (v is String) v,
+      },
     );
   }
 
@@ -78,6 +84,9 @@ class CrosswordGame {
 
   /// Der letzte Zug: wer, was ('solved', 'miss', 'hint') und bei welchem Wort.
   final ({String by, String type, String wordId})? lastMove;
+
+  /// Wörter, deren Tipp schon aufgedeckt ist (sehen beide).
+  final Set<String> tips;
 
   bool get isDone => status == 'done';
   double get progress => words.isEmpty ? 0 : solved.length / words.length;
@@ -150,8 +159,10 @@ class CrosswordService {
     }
   }
 
-  /// Lösungswörter der letzten [games] Rätsel – damit sich Wörter nicht ständig wiederholen.
-  Future<Set<String>> recentAnswers(String coupleId, {int games = 5}) async {
+  /// Lösungswörter der letzten [games] Rätsel, das zuletzt gespielte zuerst.
+  /// Der Generator nimmt zuerst nie gespielte Wörter, dann die am längsten
+  /// nicht mehr gesehenen – so wiederholt sich lange nichts.
+  Future<List<String>> recentAnswers(String coupleId, {int games = 40}) async {
     final snap = await _games(coupleId)
         .orderBy('createdAt', descending: true)
         .limit(games)
@@ -160,7 +171,28 @@ class CrosswordService {
       for (final d in snap.docs)
         for (final w in (d.data()['words'] as List?) ?? const [])
           if ((w as Map)['answer'] is String) w['answer'] as String,
-    };
+    }.toList();
+  }
+
+  /// Tipp zu [word] aufdecken – der Zug bleibt bei dir, kostet aber Punkte.
+  /// false = die Server-Regeln kennen Tipps noch nicht; dann sieht ihn nur,
+  /// wer ihn aufgedeckt hat (bis die neuen Regeln hochgeladen sind).
+  Future<bool> revealTip(
+    String coupleId,
+    CrosswordGame game,
+    CrosswordWord word,
+  ) async {
+    if (game.tips.contains(word.id)) return true;
+    try {
+      await _games(coupleId).doc(game.id).update({
+        'tips': FieldValue.arrayUnion([word.id]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      return true;
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') return false;
+      rethrow;
+    }
   }
 
   /// Neues Rätsel; wer es startet, beginnt.
@@ -211,16 +243,19 @@ class CrosswordService {
     return correct;
   }
 
-  /// Einen Buchstaben von [word] aufdecken – kostet den Zug.
+  /// Einen noch unbekannten Buchstaben von [word] aufdecken – kostet den Zug.
   Future<void> hint(
     String coupleId,
     CrosswordGame game,
     CrosswordWord word,
     String partnerUid,
   ) {
+    // Nur Felder, die noch leer sind – auch keine, die schon durch ein gelöstes
+    // Kreuzungswort sichtbar sind (sonst gäbe es keinen neuen Buchstaben).
+    final visible = game.filledBy.keys.toSet();
     final open = word.cells
+        .where((c) => !visible.contains(c))
         .map((c) => cellIndex(c, game.size))
-        .where((i) => !game.revealed.contains(i))
         .toList();
     if (open.isEmpty) return Future.value();
     return _updateWithMove(coupleId, game.id, {

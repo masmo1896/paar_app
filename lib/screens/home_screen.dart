@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../services/couple_service.dart';
 import '../utils/shared_stream.dart';
@@ -11,6 +10,7 @@ import '../theme.dart';
 import '../utils/dates.dart';
 import '../utils/wisdom.dart';
 import '../widgets/game_tiles.dart';
+import '../widgets/lantern_backdrop.dart';
 import '../widgets/lantern_sky.dart';
 import '../widgets/who.dart';
 import 'countdown_screen.dart';
@@ -65,7 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
             left: 0,
             right: 0,
             height: 300 + top,
-            child: _ParallaxLanterns(scroll: _scroll),
+            child: LanternBackdrop(scroll: _scroll),
           ),
           ListView(
             controller: _scroll,
@@ -103,49 +103,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-}
-
-/// Grosse Laternen-Illustration im Hintergrund: oben kräftig, nach unten weich
-/// ausgeblendet (läuft subtil hinter die Karten). Beim Scrollen wandert sie nur
-/// mit 45 % der Geschwindigkeit mit – das gibt Tiefe. Eigene Ebene, damit das
-/// Verschieben nichts neu malen muss.
-class _ParallaxLanterns extends StatelessWidget {
-  const _ParallaxLanterns({required this.scroll});
-
-  final ScrollController scroll;
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: scroll,
-    builder: (context, child) {
-      final offset = scroll.hasClients ? math.max(0.0, scroll.offset) : 0.0;
-      return Transform.translate(
-        offset: Offset(0, -offset * 0.45),
-        child: child,
-      );
-    },
-    child: RepaintBoundary(
-      child: ShaderMask(
-        blendMode: BlendMode.dstIn,
-        shaderCallback: (rect) => const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.white,
-            Colors.white,
-            Color(0x66FFFFFF),
-            Colors.transparent,
-          ],
-          stops: [0, 0.5, 0.78, 1],
-        ).createShader(rect),
-        child: SvgPicture.asset(
-          KitsuneArt.lanterns.asset,
-          fit: BoxFit.cover,
-          alignment: Alignment.topCenter,
-        ),
-      ),
-    ),
-  );
 }
 
 /// Frage des Tages mit Abstand darunter – nur solange sie offen ist.

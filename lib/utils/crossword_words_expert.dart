@@ -123,7 +123,7 @@ const crosswordWordsGod = <(String, String)>[
   ('QUADRATUR', 'Des Kreises: mit Zirkel und Lineal unlösbar'),
   ('ISOTHERME', 'Linie gleicher Temperatur'),
   ('ISOBARE', 'Linie gleichen Luftdrucks'),
-  ('HYPOTHENUSE', 'Längste Seite im rechtwinkligen Dreieck'),
+  ('HYPOTENUSE', 'Längste Seite im rechtwinkligen Dreieck'),
   ('KATHETE', 'Eine der kürzeren Dreiecksseiten'),
   ('RHOMBUS', 'Raute'),
   ('TRAPEZ', 'Viereck mit zwei parallelen Seiten'),

@@ -6,6 +6,7 @@ import 'package:paar_app/utils/battleship_logic.dart';
 import 'package:paar_app/utils/crossword_generator.dart';
 import 'package:paar_app/utils/crossword_logic.dart';
 import 'package:paar_app/utils/crossword_words.dart';
+import 'package:paar_app/utils/crossword_tips.dart';
 import 'package:paar_app/utils/crossword_words_expert.dart';
 
 void main() {
@@ -84,6 +85,89 @@ void main() {
       }
     });
 
+    test('Jedes Wort hat einen Tipp, der die Lösung nicht verrät', () {
+      String plain(String t) => t
+          .toUpperCase()
+          .replaceAll('Ä', 'AE')
+          .replaceAll('Ö', 'OE')
+          .replaceAll('Ü', 'UE')
+          .replaceAll('ß', 'SS');
+      for (final (answer, clue) in [
+        ...crosswordWords,
+        ...crosswordWordsHard,
+        ...crosswordWordsExpert,
+        ...crosswordWordsGod,
+      ]) {
+        final tip = crosswordTipFor(answer);
+        expect(tip, isNotNull, reason: 'kein Tipp: $answer');
+        expect(tip!.trim(), isNotEmpty, reason: answer);
+        expect(tip, isNot(clue), reason: 'Tipp = Hinweis: $answer');
+        final words = plain(tip).split(RegExp('[^A-Z]+'));
+        // Kurze Lösungen nur als ganzes Wort prüfen (sonst stecken sie zufällig in anderen).
+        final leaks = answer.length <= 4
+            ? words.contains(answer)
+            : plain(tip).replaceAll(RegExp('[^A-Z]'), '').contains(answer);
+        expect(
+          leaks,
+          isFalse,
+          reason: 'Tipp verrät die Lösung: $answer – $tip',
+        );
+      }
+    });
+
+    test(
+      'Viele Rätsel hintereinander: Wörter wiederholen sich lange nicht',
+      () {
+        for (final (level, games, maxRepeats) in [
+          (CrosswordLevel.medium, 30, 0),
+          (CrosswordLevel.hard, 12, 0),
+          (CrosswordLevel.expert, 8, 0),
+          (CrosswordLevel.god, 8, 6),
+        ]) {
+          final history = <List<String>>[]; // neuestes Rätsel zuerst
+          var repeats = 0;
+          for (var g = 0; g < games; g++) {
+            final recent = {for (final h in history) ...h}.toList();
+            final words = generateForLevel(
+              level,
+              avoid: recent,
+              random: Random(g * 7 + level.index),
+            ).puzzle.words.map((w) => w.answer).toList();
+            repeats += words.where(recent.contains).length;
+            history.insert(0, words);
+          }
+          // ignore: avoid_print
+          print('${level.label}: $games Rätsel, $repeats Wiederholungen');
+          expect(repeats, lessThanOrEqualTo(maxRepeats), reason: level.label);
+        }
+      },
+    );
+
+    test('Am längsten nicht gesehene Wörter kommen zuerst wieder', () {
+      // Alle Wörter schon gespielt: die ältesten (hinten in der Liste) werden bevorzugt.
+      final bank = [
+        for (final (a, c) in crosswordWords)
+          if (a.length >= 4 && a.length <= 8) (a, c),
+      ];
+      final avoid = [for (final (a, _) in bank) a];
+      final oldest = avoid.sublist(avoid.length ~/ 2).toSet();
+      var old = 0, total = 0;
+      for (var seed = 0; seed < 20; seed++) {
+        final p = generateCrossword(
+          bank: bank,
+          maxSize: 11,
+          target: 10,
+          minLength: 4,
+          maxLength: 8,
+          avoid: avoid,
+          random: Random(seed),
+        );
+        total += p.words.length;
+        old += p.words.where((w) => oldest.contains(w.answer)).length;
+      }
+      expect(old / total, greaterThan(0.8));
+    });
+
     test('Punkte und Sterne', () {
       final words = [
         for (var i = 0; i < 10; i++)
@@ -124,6 +208,17 @@ void main() {
       );
       expect(bad.points, 0);
       expect(bad.stars, 1);
+      // Tipps kosten 2× Punkte pro Buchstabe und zählen halb für die Sterne.
+      final tipped = crosswordScore(
+        words: words,
+        solved: 10,
+        attempts: 10,
+        hints: 0,
+        tips: 4,
+        pointsPerLetter: 10,
+      );
+      expect(tipped.points, 500 - 4 * 20);
+      expect(tipped.stars, 2);
     });
 
     test('Stufenleiter wird schwerer', () {
@@ -134,7 +229,7 @@ void main() {
           levels[i].minLength,
           greaterThanOrEqualTo(levels[i - 1].minLength),
         );
-        expect(levels[i].maxHints, lessThanOrEqualTo(levels[i - 1].maxHints));
+        expect(levels[i].maxHints, greaterThan(levels[i - 1].maxHints));
         expect(
           levels[i].pointsPerLetter,
           greaterThan(levels[i - 1].pointsPerLetter),
@@ -151,7 +246,7 @@ void main() {
           final used = {for (final w in first.words) w.answer};
           final next = generateForLevel(
             level,
-            avoid: used,
+            avoid: used.toList(),
             random: Random(seed + 100),
           ).puzzle;
           // Ganz ohne Wiederholung geht es nur, wenn genug frische Wörter passen.

@@ -571,7 +571,7 @@ class _LetterComposerState extends State<LetterComposer> {
       lastDate: today().add(const Duration(days: 3650)),
       helpText: 'Wann darf der Brief geöffnet werden?',
     );
-    if (picked != null) _setDate(picked);
+    if (picked != null && mounted) _setDate(picked);
   }
 
   /// Datum ändern, Uhrzeit behalten.
@@ -591,7 +591,7 @@ class _LetterComposerState extends State<LetterComposer> {
       initialTime: TimeOfDay.fromDateTime(_openAt),
       helpText: 'Um wie viel Uhr?',
     );
-    if (picked == null) return;
+    if (picked == null || !mounted) return;
     setState(
       () => _openAt = DateTime(
         _openAt.year,
@@ -1115,7 +1115,7 @@ class _DateJarCardState extends State<DateJarCard>
                                         widget.couple.coupleId,
                                         idea.id,
                                       );
-                                      setState(() => _idea = null);
+                                      if (mounted) setState(() => _idea = null);
                                     },
                                   ),
                               ],

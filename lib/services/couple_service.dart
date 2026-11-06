@@ -67,6 +67,13 @@ class CoupleService {
   Stream<Map<String, dynamic>?> _partnerStreamLive(String coupleId) =>
       _withNickname(_partnerProfile(coupleId));
 
+  /// Das Paar-Dokument (Mitglieder, Einladungscode). Geteilt.
+  Stream<DocumentSnapshot<Map<String, dynamic>>> coupleDoc(String coupleId) =>
+      SharedStreams.get(
+        'couple/$coupleId',
+        () => _db.collection('couples').doc(coupleId).snapshots(),
+      );
+
   /// Eigener Name für deinen Schatz – nur du siehst ihn. Leer = ihr eigener Name.
   Future<void> setPartnerNickname(String nickname) => _db
       .collection('users')

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -273,10 +274,12 @@ class _Tile extends StatelessWidget {
                 )
               : ColoredBox(
                   color: Kitsune.deep,
-                  child: Image.network(
-                    media.url,
+                  child: Image(
+                    image: ResizeImage(
+                      CachedNetworkImageProvider(media.url),
+                      width: 300, // klein dekodieren, spart Speicher
+                    ),
                     fit: BoxFit.cover,
-                    cacheWidth: 300, // klein dekodieren, spart Speicher
                     errorBuilder: (_, _, _) => const Icon(
                       Icons.broken_image_outlined,
                       color: Kitsune.dim,
@@ -337,7 +340,11 @@ class _PhotoPagerState extends State<_PhotoPager> {
               itemCount: widget.photos.length,
               onPageChanged: (i) => setState(() => _index = i),
               itemBuilder: (_, i) => InteractiveViewer(
-                child: Center(child: Image.network(widget.photos[i].url)),
+                child: Center(
+                  child: Image(
+                    image: CachedNetworkImageProvider(widget.photos[i].url),
+                  ),
+                ),
               ),
             ),
           ),

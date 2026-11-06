@@ -9,6 +9,7 @@ import '../services/crossword_service.dart';
 import '../services/games_service.dart';
 import '../theme.dart';
 import '../utils/crossword_generator.dart';
+import '../utils/shared_stream.dart';
 import 'motion.dart';
 import 'who.dart';
 
@@ -32,9 +33,12 @@ class GameTiles extends StatelessWidget {
             art: _TileArt.sea,
             enabled: ready,
             myTurn: games.battleshipMyTurn(id),
-            status: BattleshipService.instance
-                .current(id)
-                .map((g) => _battleStatus(g)),
+            // Geteilt, damit jedes Neuzeichnen von Home nicht neu verbindet
+            // (sonst flackert der Status kurz weg).
+            status: SharedStreams.get(
+              'battleTile/${couple.myUid}/$id/${couple.partnerLabel}',
+              () => BattleshipService.instance.current(id).map(_battleStatus),
+            ),
             onOpen: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => BattleshipScreen(couple: couple),
@@ -50,9 +54,10 @@ class GameTiles extends StatelessWidget {
             art: _TileArt.words,
             enabled: ready,
             myTurn: games.crosswordMyTurn(id),
-            status: CrosswordService.instance
-                .current(id)
-                .map((g) => _crosswordStatus(g)),
+            status: SharedStreams.get(
+              'crosswordTile/${couple.myUid}/$id/${couple.partnerLabel}',
+              () => CrosswordService.instance.current(id).map(_crosswordStatus),
+            ),
             onOpen: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => CrosswordScreen(couple: couple),

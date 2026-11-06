@@ -8,6 +8,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../services/couple_service.dart';
 import '../services/push_service.dart';
 import '../theme.dart';
+import '../widgets/fox_visit.dart';
 import '../widgets/hidden_kanji.dart';
 import '../widgets/motion.dart';
 import '../widgets/who.dart';
@@ -134,6 +135,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           Positioned.fill(
             child: HiddenKanjiLayer(couple: couple, tab: _tab),
           ),
+          // Alle 15 Minuten schaut der Fuchs vom Rand herein und schickt Küsse.
+          const Positioned.fill(child: FoxVisitLayer()),
         ],
       ),
       bottomNavigationBar: _KitsuneNav(selected: _tab, onSelect: _open),

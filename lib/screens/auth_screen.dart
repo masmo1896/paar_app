@@ -50,7 +50,7 @@ class _AuthScreenState extends State<AuthScreen> {
       }
       // Kein Navigieren nötig: AppGate reagiert automatisch auf den Login.
     } on FirebaseAuthException catch (e) {
-      setState(() => _error = _message(e.code));
+      if (mounted) setState(() => _error = _message(e.code));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -86,7 +86,7 @@ class _AuthScreenState extends State<AuthScreen> {
         ),
       );
     } on FirebaseAuthException catch (e) {
-      setState(() => _error = _message(e.code));
+      if (mounted) setState(() => _error = _message(e.code));
     }
   }
 

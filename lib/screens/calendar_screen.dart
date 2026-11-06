@@ -614,7 +614,7 @@ class _EventFormState extends State<_EventForm> {
 
   Future<void> _pickStartDate() async {
     final d = await _pickDate(_start);
-    if (d == null) return;
+    if (d == null || !mounted) return;
     setState(() {
       // Das Ende rutscht mit, damit es nie vor dem Anfang liegt.
       final length = _end.difference(_start);
@@ -625,7 +625,7 @@ class _EventFormState extends State<_EventForm> {
 
   Future<void> _pickEndDate() async {
     final d = await _pickDate(_end, first: _start);
-    if (d != null) setState(() => _end = d);
+    if (d != null && mounted) setState(() => _end = d);
   }
 
   Future<void> _pickTime(bool start) async {
@@ -633,7 +633,9 @@ class _EventFormState extends State<_EventForm> {
       context: context,
       initialTime: start ? _startTime : (_endTime ?? _startTime),
     );
-    if (t != null) setState(() => start ? _startTime = t : _endTime = t);
+    if (t != null && mounted) {
+      setState(() => start ? _startTime = t : _endTime = t);
+    }
   }
 
   Future<void> _save() async {

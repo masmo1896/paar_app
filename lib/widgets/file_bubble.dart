@@ -72,6 +72,7 @@ class _FileBubbleState extends State<FileBubble> {
     try {
       final file = await _localFile();
       if (!await file.exists() || await file.length() == 0) {
+        if (!mounted) return;
         setState(() => _progress = 0);
         final response = await http.Client().send(
           http.Request('GET', Uri.parse(widget.url)),

@@ -70,6 +70,7 @@ class _CameraPageState extends State<CameraPage> {
       await _open();
     } catch (e, s) {
       AppLogger.error(e, s, where: 'Kamera starten');
+      if (!mounted) return;
       setState(() => _error = 'Kamera konnte nicht gestartet werden.\n$e');
     }
   }
@@ -79,6 +80,7 @@ class _CameraPageState extends State<CameraPage> {
     final old = _camera;
     setState(() => _camera = null);
     await old?.dispose();
+    if (!mounted) return;
     if (_cameras.isEmpty) {
       setState(() => _error = 'Keine Kamera gefunden.');
       return;
@@ -214,6 +216,7 @@ class _CameraPageState extends State<CameraPage> {
       await camera.setFlashMode(FlashMode.torch).catchError((_) {});
     }
     await camera.startVideoRecording();
+    if (!mounted) return;
     setState(() {
       _recordingSince = since;
       _elapsed = Duration.zero;

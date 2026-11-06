@@ -68,6 +68,7 @@ class _CrosswordScreenState extends State<CrosswordScreen> {
   Widget build(BuildContext context) {
     final couple = widget.couple;
     final top = MediaQuery.paddingOf(context).top;
+    // Den deckenden Grund (Wellenmuster) gibt jetzt die Seitenanimation dazu.
     return Scaffold(
       body: Stack(
         children: [

@@ -94,37 +94,52 @@ class _HiddenKanjiLayerState extends State<HiddenKanjiLayer> {
           (_) => _maybeCelebrate(found),
         );
         final mine = found.contains(widget.couple.myUid);
+        // Habt ihr es beide gefunden, verschwindet das Zeichen sanft.
+        final both =
+            mine && found.contains(widget.couple.partnerUid ?? '\u0000');
         return LayoutBuilder(
           builder: (context, box) => Stack(
             children: [
               Positioned(
                 left: box.maxWidth * k.x - 22,
                 top: box.maxHeight * k.y - 22,
-                child: Semantics(
-                  label: mine ? 'Gefundenes Zeichen' : null,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _tap(found),
-                    child: SizedBox.square(
-                      dimension: 44,
-                      child: Center(
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 400),
-                          child: mine
-                              ? Hanko(k.char, key: const ValueKey(1), size: 22)
-                              : Transform.rotate(
-                                  key: const ValueKey(0),
-                                  angle: -0.2,
-                                  child: Text(
-                                    k.char,
-                                    style: AppTheme.serif(
-                                      size: 15,
-                                      color: Kitsune.paper.withValues(
-                                        alpha: 0.22,
+                child: IgnorePointer(
+                  ignoring: both,
+                  child: AnimatedOpacity(
+                    opacity: both ? 0 : 1,
+                    duration: const Duration(milliseconds: 1600),
+                    curve: Curves.easeInOut,
+                    child: Semantics(
+                      label: mine ? 'Gefundenes Zeichen' : null,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _tap(found),
+                        child: SizedBox.square(
+                          dimension: 44,
+                          child: Center(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 400),
+                              child: mine
+                                  ? Hanko(
+                                      k.char,
+                                      key: const ValueKey(1),
+                                      size: 22,
+                                    )
+                                  : Transform.rotate(
+                                      key: const ValueKey(0),
+                                      angle: -0.2,
+                                      child: Text(
+                                        k.char,
+                                        style: AppTheme.serif(
+                                          size: 15,
+                                          color: Kitsune.paper.withValues(
+                                            alpha: 0.22,
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ),
+                            ),
+                          ),
                         ),
                       ),
                     ),

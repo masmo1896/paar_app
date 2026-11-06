@@ -129,10 +129,16 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: scheme,
       // Weiche Seitenübergänge (Android); iPhone behält das gewohnte Wischen.
+      // Jede weitere Seite bekommt ihr eigenes Wellenmuster als Grund, sonst
+      // scheint beim Gleiten die Seite darunter durch.
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
-          TargetPlatform.android: SoftPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.android: OpaquePageTransitionsBuilder(
+            SoftPageTransitionsBuilder(),
+          ),
+          TargetPlatform.iOS: OpaquePageTransitionsBuilder(
+            CupertinoPageTransitionsBuilder(),
+          ),
         },
       ),
       textTheme: textTheme,
@@ -350,6 +356,31 @@ class Paper extends StatelessWidget {
 /// Bild wiederholt (ein Zeichenschritt statt tausender Kreise). Es liegt in
 /// einer eigenen Ebene (RepaintBoundary), damit Animationen darüber es nicht
 /// jedes Mal neu malen.
+/// Alle Bildschirme sind durchsichtig, das Wellenmuster liegt einmal ganz
+/// hinten (AppBackground um die ganze App). Eine Seite, die darüber gleitet,
+/// braucht aber einen deckenden Grund – sonst sieht man beide gleichzeitig.
+/// Darum bekommt jede Seite ausser der ersten ihr eigenes Muster.
+class OpaquePageTransitionsBuilder extends PageTransitionsBuilder {
+  const OpaquePageTransitionsBuilder(this.inner);
+
+  final PageTransitionsBuilder inner;
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => inner.buildTransitions(
+    route,
+    context,
+    animation,
+    secondaryAnimation,
+    route.isFirst || !route.opaque ? child : AppBackground(child: child),
+  );
+}
+
 class AppBackground extends StatefulWidget {
   const AppBackground({super.key, required this.child});
 
@@ -360,6 +391,8 @@ class AppBackground extends StatefulWidget {
 }
 
 class _AppBackgroundState extends State<AppBackground> {
+  // Eine Kachel pro Bildschirmdichte für alle Hintergründe (jede Seite hat einen).
+  static final _shared = <double, ui.Image>{};
   ui.Image? _tile;
   double? _tileRatio;
 
@@ -374,18 +407,15 @@ class _AppBackgroundState extends State<AppBackground> {
   }
 
   Future<void> _makeTile(double ratio) async {
+    final cached = _shared[ratio];
+    if (cached != null) {
+      _tile = cached;
+      return;
+    }
     final tile = await _SeigaihaTile.render(ratio);
-    if (!mounted) return tile.dispose();
-    setState(() {
-      _tile?.dispose();
-      _tile = tile;
-    });
-  }
-
-  @override
-  void dispose() {
-    _tile?.dispose();
-    super.dispose();
+    _shared.putIfAbsent(ratio, () => tile);
+    if (!identical(_shared[ratio], tile)) tile.dispose();
+    if (mounted) setState(() => _tile = _shared[ratio]);
   }
 
   @override

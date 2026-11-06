@@ -1708,10 +1708,9 @@ class _InviteBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('couples')
-          .doc(coupleId)
-          .snapshots(),
+      // Geteilt: der Chat zeichnet bei jedem Tastendruck neu – ohne das gäbe es
+      // jedes Mal eine neue Firestore-Verbindung.
+      stream: CoupleService.instance.coupleDoc(coupleId),
       builder: (context, snap) {
         final data = snap.data?.data();
         final members = (data?['members'] as List?) ?? const [];

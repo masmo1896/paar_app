@@ -8,6 +8,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import '../services/app_logger.dart';
 import '../theme.dart';
 
 /// "mm:ss" für Aufnahme- und Abspieldauer.
@@ -679,14 +680,49 @@ class _AudioBubbleState extends State<AudioBubble> {
       ? widget.waveform!
       : fallbackWaveform(widget.url);
 
-  Future<AudioPlayer> _ensurePlayer() async {
+  // Läuft gerade das Laden? Dann wartet ein zweiter Tipp darauf, statt einen
+  // zweiten Player zu erzeugen.
+  Future<AudioPlayer?>? _pending;
+
+  /// Lädt den Player beim ersten Abspielen. null = ging nicht (z. B. offline)
+  /// oder die Nachricht ist inzwischen nicht mehr zu sehen.
+  Future<AudioPlayer?> _ensurePlayer() async {
     final existing = _player;
     if (existing != null) return existing;
+    try {
+      return await (_pending ??= _load());
+    } catch (e, s) {
+      AppLogger.error(e, s, where: 'Sprachnachricht laden');
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text('Sprachnachricht konnte nicht geladen werden.'),
+          ),
+        );
+      }
+      return null;
+    } finally {
+      _pending = null;
+    }
+  }
+
+  Future<AudioPlayer?> _load() async {
     setState(() => _loading = true);
     final player = AudioPlayer();
-    widget.isFile
-        ? await player.setFilePath(widget.url)
-        : await player.setUrl(widget.url);
+    try {
+      widget.isFile
+          ? await player.setFilePath(widget.url)
+          : await player.setUrl(widget.url);
+    } catch (_) {
+      await player.dispose();
+      rethrow;
+    }
+    // Chat inzwischen verlassen: Player gleich wieder freigeben.
+    if (!mounted) {
+      await player.dispose();
+      return null;
+    }
     // Am Ende zurückspulen, damit man nochmals abspielen kann.
     player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
@@ -694,22 +730,22 @@ class _AudioBubbleState extends State<AudioBubble> {
         player.seek(Duration.zero);
       }
     });
-    if (mounted) {
-      setState(() {
-        _player = player;
-        _loading = false;
-      });
-    }
+    setState(() {
+      _player = player;
+      _loading = false;
+    });
     return player;
   }
 
   Future<void> _toggle() async {
     final player = await _ensurePlayer();
+    if (player == null) return;
     player.playing ? await player.pause() : await player.play();
   }
 
   Future<void> _seek(double fraction) async {
     final player = await _ensurePlayer();
+    if (player == null) return;
     final total = player.duration ?? widget.duration;
     await player.seek(total * fraction);
   }

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../services/album_service.dart';
@@ -74,8 +75,8 @@ class _PhotoViewerPageState extends State<PhotoViewerPage> {
                 minScale: 1,
                 maxScale: 5,
                 child: Center(
-                  child: Image.network(
-                    photos[i].url,
+                  child: Image(
+                    image: CachedNetworkImageProvider(photos[i].url),
                     fit: BoxFit.contain,
                     semanticLabel: 'Foto ${i + 1} von ${photos.length}',
                     loadingBuilder: (context, child, progress) =>

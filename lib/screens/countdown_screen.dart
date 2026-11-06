@@ -310,7 +310,7 @@ class _CountdownFormState extends State<_CountdownForm> {
       firstDate: DateTime(1990),
       lastDate: DateTime(2100),
     );
-    if (picked != null) setState(() => _date = picked);
+    if (picked != null && mounted) setState(() => _date = picked);
   }
 
   Future<void> _save() async {

@@ -28,6 +28,7 @@ class _PairingScreenState extends State<PairingScreen> {
     try {
       await action();
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _busy = false);

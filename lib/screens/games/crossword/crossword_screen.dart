@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../../services/app_logger.dart';
 import '../../../services/crossword_service.dart';
@@ -31,8 +32,34 @@ class CrosswordScreen extends StatefulWidget {
 class _CrosswordScreenState extends State<CrosswordScreen> {
   final _scroll = ScrollController();
 
+  // Das Rätsel wird erst aufgebaut, wenn die Seite ganz hereingeglitten ist –
+  // so bleibt die Übergangsanimation flüssig.
+  bool _settled = false;
+  Animation<double>? _route;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context)?.animation;
+    if (route == _route) return;
+    _route?.removeStatusListener(_onRoute);
+    _route = route;
+    if (route == null || route.status == AnimationStatus.completed) {
+      _settled = true;
+    } else {
+      route.addStatusListener(_onRoute);
+    }
+  }
+
+  void _onRoute(AnimationStatus status) {
+    if (status == AnimationStatus.completed && !_settled) {
+      setState(() => _settled = true);
+    }
+  }
+
   @override
   void dispose() {
+    _route?.removeStatusListener(_onRoute);
     _scroll.dispose();
     super.dispose();
   }
@@ -65,7 +92,11 @@ class _CrosswordScreenState extends State<CrosswordScreen> {
                   _Header(couple: couple, game: game),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
-                    child: loading
+                    child: !_settled
+                        // Platzhalter während der Animation (gleich hoch wie der
+                        // Ladekreis, damit nichts springt).
+                        ? const SizedBox(height: 120)
+                        : loading
                         ? const Padding(
                             padding: EdgeInsets.only(top: 40),
                             child: Center(child: CircularProgressIndicator()),
@@ -436,10 +467,13 @@ class _Puzzle extends StatefulWidget {
 class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
   String? _selected;
   late final _fx = EffectLayer();
-  late final _ticker = createTicker((e) {
+  // Läuft nur, solange ein Effekt zu sehen ist – sonst hielte sie die App
+  // dauernd im Animationsmodus (macht u. a. das Öffnen und Schliessen zäh).
+  late final Ticker _ticker = createTicker((e) {
     final dt = ((e - _last).inMicroseconds / 1e6).clamp(0.0, 0.05);
     _last = e;
     _fx.tick(dt);
+    if (!_fx.busy) _ticker.stop();
   });
   Duration _last = Duration.zero;
   late bool _wasDone = widget.game.isDone;
@@ -453,10 +487,14 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
   Set<Point<int>> _fresh = {};
   late Map<String, String> _solvedBefore = Map.of(widget.game.solved);
 
-  @override
-  void initState() {
-    super.initState();
-    _ticker.start();
+  /// Feuerwerk über dem Gitter zünden und die Effekt-Uhr starten.
+  void _fireworks(int bursts) {
+    if (reduceMotion(context) || _gridSize == Size.zero) return;
+    _fx.fireworks(_gridSize, bursts: bursts);
+    if (!_ticker.isActive) {
+      _last = Duration.zero;
+      _ticker.start();
+    }
   }
 
   @override
@@ -480,18 +518,14 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
         g.lastMove?.type == 'solved') {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         HapticFeedback.mediumImpact();
-        if (!reduceMotion(context) && _gridSize != Size.zero) {
-          _fx.fireworks(_gridSize, bursts: 2);
-        }
+        if (mounted) _fireworks(2);
       });
     }
     if (g.isDone && !_wasDone) {
       _wasDone = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         HapticFeedback.heavyImpact();
-        if (!reduceMotion(context) && _gridSize != Size.zero) {
-          _fx.fireworks(_gridSize, bursts: 8);
-        }
+        if (mounted) _fireworks(8);
       });
     }
   }
@@ -691,20 +725,22 @@ class _PuzzleState extends State<_Puzzle> with TickerProviderStateMixin {
               child: Stack(
                 children: [
                   Positioned.fill(
-                    child: AnimatedBuilder(
-                      animation: _stamp,
-                      builder: (context, _) => _Grid(
-                        game: g,
-                        couple: widget.couple,
-                        numbers: numbers,
-                        selected: _word,
-                        fresh: _fresh,
-                        stamp: _stamp.value,
-                        tipStarts: {
-                          for (final w in g.words)
-                            if (_tips.contains(w.id)) Point(w.x, w.y),
-                        },
-                        onTap: _tapCell,
+                    child: RepaintBoundary(
+                      child: AnimatedBuilder(
+                        animation: _stamp,
+                        builder: (context, _) => _Grid(
+                          game: g,
+                          couple: widget.couple,
+                          numbers: numbers,
+                          selected: _word,
+                          fresh: _fresh,
+                          stamp: _stamp.value,
+                          tipStarts: {
+                            for (final w in g.words)
+                              if (_tips.contains(w.id)) Point(w.x, w.y),
+                          },
+                          onTap: _tapCell,
+                        ),
                       ),
                     ),
                   ),
@@ -924,12 +960,9 @@ class _Cell extends StatelessWidget {
             color: selected ? Kitsune.lantern : const Color(0x33133174),
             width: selected ? 1.6 : 1,
           ),
+          // Harte Schattenkante statt Unschärfe: sieht gleich aus, kostet fast nichts.
           boxShadow: const [
-            BoxShadow(
-              color: Color(0x55000000),
-              blurRadius: 2,
-              offset: Offset(0, 1),
-            ),
+            BoxShadow(color: Color(0x55000000), offset: Offset(0, 1)),
           ],
         ),
         child: LayoutBuilder(
